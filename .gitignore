@@ -1,0 +1,11 @@
+# Programs and settings only. Data, models, build output and logs stay on disk.
+/data/
+/app/
+/logs/
+*.jar
+__pycache__/
+target/
+*.log
+/archive/
+/models*/
+release_stage/
