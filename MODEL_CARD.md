@@ -49,7 +49,7 @@ The examples are 4,396 stretches of sentences of the Japanese Wikipedia that wer
 
 On 2,157 examples whose reading stops inside the okurigana or particles at the end of the last phrasal unit (bunsetsu), the model gives a character error rate of 4.98 % and an exact match of 70.2 %.
 
-The correct texts were made by Gemma 4 and contain some errors. The measurement does not cover other kinds of text (books, chat, mail, technical writing).
+The correct texts were made by Gemma 4, a large language model that needs GPUs, and Gemma 4 does not convert perfectly either. The ideal for this program is the accuracy of Gemma 4, on a PC without a GPU. The measurement does not cover other kinds of text (books, chat, mail, technical writing).
 
 ## License and attribution
 
