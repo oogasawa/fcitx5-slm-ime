@@ -3,8 +3,12 @@
 #   djl/target/slm-ime-server-*-shaded.jar   cd djl && rm -rf target && mvn install
 #   MODEL_DIR                                 the TorchScript model directory (export_torchscript.py)
 #   DJL_CACHE                                 the PyTorch native libraries that DJL downloaded once (~/.djl.ai)
+#   JLINK_JDK                                 a JDK 25 that has jlink and jmods (default: JAVA_HOME)
 MODEL_DIR ?= $(CURDIR)/run_ctx_e7/model
 DJL_CACHE ?= $(HOME)/.djl.ai
+JLINK_JDK ?= $(JAVA_HOME)
+# Modules that the server needs at run time (jdeps of the shaded jar, plus the ones that are loaded by name).
+JAVA_MODULES := java.base,java.compiler,java.desktop,java.management,java.sql,jdk.httpserver,java.logging,java.xml,java.naming,java.net.http,jdk.unsupported,jdk.crypto.ec,jdk.zipfs,java.security.jgss
 JAR := $(wildcard $(CURDIR)/djl/target/slm-ime-server-*-shaded.jar)
 
 %:
@@ -17,24 +21,28 @@ override_dh_auto_install:
 	install -D -m 755 debian/slm-ime-server.sh debian/slm-ime-server/usr/bin/slm-ime-server
 	mkdir -p debian/slm-ime-server/usr/lib/slm-ime-server/djl-cache
 	cp -a $(DJL_CACHE)/pytorch debian/slm-ime-server/usr/lib/slm-ime-server/djl-cache/
+	# The server has its own Java runtime, so that the java command of the system is not touched.
+	$(JLINK_JDK)/bin/jlink --add-modules $(JAVA_MODULES) --strip-debug --no-header-files --no-man-pages \
+	    --compress zip-6 --output debian/slm-ime-server/usr/lib/slm-ime-server/runtime
+	rm -f debian/slm-ime-server/usr/lib/slm-ime-server/runtime/lib/libjvmcicompiler.so
 	mkdir -p debian/slm-ime-model/usr/share/slm-ime
 	cp -a $(MODEL_DIR) debian/slm-ime-model/usr/share/slm-ime/model
 
-# The libraries of PyTorch are used as they are.
+# The libraries of PyTorch and the Java runtime are used as they are.
 override_dh_strip:
-	dh_strip -Xdjl-cache
+	dh_strip -Xdjl-cache -Xslm-ime-server/runtime
 
 override_dh_shlibdeps:
-	dh_shlibdeps -Xdjl-cache
+	dh_shlibdeps -Xdjl-cache -Xslm-ime-server/runtime
 
 override_dh_makeshlibs:
-	dh_makeshlibs -Xdjl-cache -Xfcitx5
+	dh_makeshlibs -Xdjl-cache -Xslm-ime-server/runtime -Xfcitx5
 
 override_dh_dwz:
-	dh_dwz -Xdjl-cache
+	dh_dwz -Xdjl-cache -Xslm-ime-server/runtime
 
 override_dh_compress:
-	dh_compress -Xdjl-cache
+	dh_compress -Xdjl-cache -Xslm-ime-server/runtime
 
 override_dh_builddeb:
 	dh_builddeb -- -Zzstd -z9

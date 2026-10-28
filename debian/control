@@ -20,11 +20,11 @@ Description: Japanese input method for fcitx5 using a small language model
 
 Package: slm-ime-server
 Architecture: amd64
-Depends: ${misc:Depends}, openjdk-25-jre-headless, libanthy1t64 | libanthy1, slm-ime-model (>= ${source:Version})
+Depends: ${misc:Depends}, libanthy1t64 | libanthy1, slm-ime-model (>= ${source:Version})
 Description: Conversion server of fcitx5-slm-ime (kana to kanji on a CPU)
  HTTP server on 127.0.0.1:8190 that converts hiragana to kanji-kana text with
  a small Transformer model, using the text before the cursor as context. It
- runs on a CPU. The package contains the server, the PyTorch native libraries
+ runs on a CPU. The package contains the server, its own Java runtime, the PyTorch native libraries
  that the server loads (so that it starts without network access), and a
  systemd user service that starts it at login.
  .

@@ -8,10 +8,10 @@ cd "$data"
 # The PyTorch native libraries are in the package; DJL does not download them.
 export DJL_CACHE_DIR=/usr/lib/slm-ime-server/djl-cache
 model=/usr/share/slm-ime/model
-java=/usr/lib/jvm/java-25-openjdk-$(dpkg --print-architecture)/bin/java
-[ -x "$java" ] || java=java
+# The Java runtime of the package (made by jlink). The libjvmcicompiler library is not in it.
+java=/usr/lib/slm-ime-server/runtime/bin/java
 # shellcheck disable=SC2086
-exec "$java" --enable-native-access=ALL-UNNAMED -Xmx2g \
+exec "$java" -XX:+IgnoreUnrecognizedVMOptions -XX:-UseJVMCICompiler --enable-native-access=ALL-UNNAMED -Xmx2g \
     -Dmodel.context=true -Dmodel.dir="$model" -Dtokenizer="$model/tokenizer.json" \
     -Dhistory.file="$data/user_history.tsv" ${SLM_IME_JAVA_OPTS} \
     -jar /usr/share/java/slm-ime-server.jar --server 8190
