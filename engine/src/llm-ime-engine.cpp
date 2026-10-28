@@ -643,24 +643,25 @@ private:
         }
         ic->commitString(result);
 
-        // Record conversion history asynchronously (fire and forget).
-        // "corrections" lists the segments the user changed: a candidate other than the first was taken, or a
-        // border between segments was moved (the first candidate of the new reading is then taken as it is).
-        if (hiragana != result) {
-            try {
-                std::vector<Choice> committed;
-                for (auto &seg : state->segments_) {
-                    committed.push_back({seg.reading, seg.candidates[seg.selectedIndex]});
-                }
-                json corrections = json::array();
-                for (auto &changed : changedChoices(state->offered_, committed)) {
-                    corrections.push_back({{"reading", changed.reading}, {"chosen", changed.text}});
-                }
+        // Record what the user changed asynchronously (fire and forget). "corrections" lists the segments the user
+        // changed: a candidate other than the first was taken, or a border between segments was moved (the first
+        // candidate of the new reading is then taken as it is). The reading itself may be what the user took
+        // (the result equals the hiragana): that is a change as well, so the result is not compared with the reading.
+        try {
+            std::vector<Choice> committed;
+            for (auto &seg : state->segments_) {
+                committed.push_back({seg.reading, seg.candidates[seg.selectedIndex]});
+            }
+            json corrections = json::array();
+            for (auto &changed : changedChoices(state->offered_, committed)) {
+                corrections.push_back({{"reading", changed.reading}, {"chosen", changed.text}});
+            }
+            if (!corrections.empty()) {
                 json req = {{"input", hiragana}, {"output", result}, {"corrections", corrections}};
                 httpClient_.post("/api/record", req);
-            } catch (...) {
-                // Ignore record failures
             }
+        } catch (...) {
+            // Ignore record failures
         }
 
         // Track committed text for continuation
