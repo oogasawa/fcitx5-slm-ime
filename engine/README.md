@@ -2,7 +2,7 @@
 
 An input method engine (a fcitx5 addon, C++) for Japanese. It is the engine of this repository, `fcitx5-slm-ime`; in its source and in the installed files it is still named `llm-ime`, its former name. It turns typed romaji into hiragana, sends
 the reading and the text before the cursor to a conversion server over HTTP, and shows the answer
-bunsetsu by bunsetsu with candidates to choose from. The conversion itself is done by the server.
+one phrasal unit (bunsetsu) at a time, with candidates to choose from. The conversion itself is done by the server.
 
 It is developed against the inference server in `../djl` (a small neural model on a CPU), and it
 also speaks to the older backend `quarkus-llm-ime` (Mozc and vLLM; see `docs/legacy-backend-setup.ja.md`,
@@ -23,15 +23,18 @@ conversion server (http://localhost:8190)
 - The text before the cursor is read from the application through fcitx5 `SurroundingText`
   (the last 500 characters before the cursor). It also contains what was typed while the input
   method was switched off. Applications that do not provide it send no context.
-- When the user takes a candidate other than the first for a bunsetsu, the engine sends the
-  corrections (`reading` and `chosen`) with `POST /api/record` at commit time.
+- At commit time the engine sends the phrasal units (bunsetsu) that the user changed, with `POST /api/record`
+  (`reading` and `chosen` of each). A phrasal unit (bunsetsu) is changed when the user took a candidate other
+  than the first, or moved a border so that its reading is new, even if the first candidate of that reading was
+  taken as it is. The engine remembers what the server offered at the start of the conversion and compares the
+  committed text with it.
 
 Server address: `http://localhost:8190` (set in `src/llm-ime-engine.cpp`).
 
 | Request | Use |
 |---|---|
-| `POST /api/segment-convert` | convert a reading; the answer is cut into bunsetsu with candidates |
-| `POST /api/segment-candidates` | candidates for one bunsetsu whose reading is known |
+| `POST /api/segment-convert` | convert a reading; the answer is cut into phrasal units (bunsetsu) with candidates |
+| `POST /api/segment-candidates` | candidates for one phrasal unit (bunsetsu) whose reading is known |
 | `POST /api/convert` | convert the whole text into one string |
 | `POST /api/record` | what the user chose |
 | `GET /api/predict`, `POST /api/continue` | predictions and continuations (the server may answer empty) |
@@ -46,16 +49,16 @@ Server address: `http://localhost:8190` (set in `src/llm-ime-engine.cpp`).
 | Enter | commit (the hiragana as typed, or the converted text) |
 | Escape | cancel; in conversion mode, back to typing |
 | Backspace | delete the letter before the cursor |
-| Left / Right | while typing: move the cursor in the reading by one kana; in conversion mode: previous / next bunsetsu |
+| Left / Right | while typing: move the cursor in the reading by one kana; in conversion mode: previous / next phrasal unit (bunsetsu) |
 | Home / End / Delete | while typing: move the cursor to the start / the end of the reading; delete the kana after the cursor |
-| Shift+Left / Shift+Right | shorten / extend the bunsetsu |
+| Shift+Left / Shift+Right | shorten / extend the phrasal unit (bunsetsu) |
 | Up / Down, 1 to 9 | choose a candidate |
 | Ctrl+Tab, Tab | ask for a continuation of the text; accept it (with an empty buffer) |
 
 Whether Ctrl+Enter reaches the engine depends on the application and on the fcitx5 settings.
 
 While typing, the cursor of the reading is shown in the preedit. In conversion mode the cursor is at the start of the
-bunsetsu that is being chosen (the highlighted one). The engine does not write a log of the keys.
+phrasal unit (bunsetsu) that is being chosen (the highlighted one). The engine does not write a log of the keys.
 
 ## Build and install
 

@@ -1,7 +1,7 @@
 # Model card: fcitx5-slm-ime conversion model (epoch 7)
 
 A small character-level Transformer (encoder-decoder, 58,372,653 parameters) that converts typed hiragana to
-kanji-kana text with bunsetsu (phrase) boundaries `|`. It reads the hiragana to convert together with the
+kanji-kana text with phrasal unit (bunsetsu) boundaries `|`. It reads the hiragana to convert together with the
 text before the cursor, and it runs on a CPU.
 
 ## Files
@@ -17,14 +17,14 @@ text before the cursor, and it runs on a CPU.
 
 Input: the last 48 characters before the cursor, a separator (`\x1f`, which the tokenizer turns into the
 `[SEP]` token), the hiragana to convert, and the end-of-sequence token. The text before the cursor may be
-empty. Output: the kanji-kana text for the hiragana, with `|` between bunsetsu. The maximum input length is
+empty. Output: the kanji-kana text for the hiragana, with `|` between phrasal units (bunsetsu). The maximum input length is
 192 characters. Decoding is greedy.
 
 ## Training
 
 - Data: 1,368,372 rows made from sentences of the Japanese Wikipedia. Each row is a stretch of one sentence
-  that starts and ends at bunsetsu boundaries, with the text before it as the context (20 % of the rows have
-  an empty context). The reading of every sentence and the kanji-kana text with bunsetsu boundaries were made by
+  that starts and ends at phrasal unit (bunsetsu) boundaries, with the text before it as the context (20 % of the rows have
+  an empty context). The reading of every sentence and the kanji-kana text with phrasal unit (bunsetsu) boundaries were made by
   a large language model (Gemma 4, Apache License 2.0); they were not written by hand. The data is not
   distributed.
 - Settings: `d_model` 512, 8 heads, 6 encoder layers, 6 decoder layers, `d_ff` 2048, 8 epochs of 21,347 steps
