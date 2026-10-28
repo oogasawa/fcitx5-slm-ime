@@ -1,4 +1,5 @@
 #include "http-client.h"
+#include "romaji.h"
 #include <fcitx-utils/log.h>
 #include <fcitx/addonfactory.h>
 #include <fstream>
@@ -20,6 +21,7 @@
 namespace {
 
 using namespace fcitx;
+using namespace llmime;
 using json = nlohmann::json;
 
 // Segment from the daemon's /api/segment-convert response
@@ -65,162 +67,6 @@ public:
     // Text before the cursor when the conversion started (sent with every request of this conversion)
     std::string textBefore_;
 };
-
-// Simple romaji to hiragana conversion table
-static const std::vector<std::pair<std::string, std::string>> romajiTable = {
-    // Double consonants (must come before single)
-    {"kya", "きゃ"}, {"kyi", "きぃ"}, {"kyu", "きゅ"}, {"kye", "きぇ"}, {"kyo", "きょ"},
-    {"sha", "しゃ"}, {"shi", "し"}, {"shu", "しゅ"}, {"she", "しぇ"}, {"sho", "しょ"},
-    {"sya", "しゃ"}, {"syi", "しぃ"}, {"syu", "しゅ"}, {"sye", "しぇ"}, {"syo", "しょ"},
-    {"cha", "ちゃ"}, {"chi", "ち"}, {"chu", "ちゅ"}, {"che", "ちぇ"}, {"cho", "ちょ"},
-    {"cya", "ちゃ"}, {"cyi", "ちぃ"}, {"cyu", "ちゅ"}, {"cye", "ちぇ"}, {"cyo", "ちょ"},
-    {"tya", "ちゃ"}, {"tyi", "ちぃ"}, {"tyu", "ちゅ"}, {"tye", "ちぇ"}, {"tyo", "ちょ"},
-    {"nya", "にゃ"}, {"nyi", "にぃ"}, {"nyu", "にゅ"}, {"nye", "にぇ"}, {"nyo", "にょ"},
-    {"hya", "ひゃ"}, {"hyi", "ひぃ"}, {"hyu", "ひゅ"}, {"hye", "ひぇ"}, {"hyo", "ひょ"},
-    {"mya", "みゃ"}, {"myi", "みぃ"}, {"myu", "みゅ"}, {"mye", "みぇ"}, {"myo", "みょ"},
-    {"rya", "りゃ"}, {"ryi", "りぃ"}, {"ryu", "りゅ"}, {"rye", "りぇ"}, {"ryo", "りょ"},
-    {"gya", "ぎゃ"}, {"gyi", "ぎぃ"}, {"gyu", "ぎゅ"}, {"gye", "ぎぇ"}, {"gyo", "ぎょ"},
-    {"ja", "じゃ"}, {"ji", "じ"}, {"ju", "じゅ"}, {"je", "じぇ"}, {"jo", "じょ"},
-    {"jya", "じゃ"}, {"jyi", "じぃ"}, {"jyu", "じゅ"}, {"jye", "じぇ"}, {"jyo", "じょ"},
-    {"dya", "ぢゃ"}, {"dyi", "ぢぃ"}, {"dyu", "ぢゅ"}, {"dye", "ぢぇ"}, {"dyo", "ぢょ"},
-    {"zya", "じゃ"}, {"zyi", "じぃ"}, {"zyu", "じゅ"}, {"zye", "じぇ"}, {"zyo", "じょ"},
-    {"bya", "びゃ"}, {"byi", "びぃ"}, {"byu", "びゅ"}, {"bye", "びぇ"}, {"byo", "びょ"},
-    {"pya", "ぴゃ"}, {"pyi", "ぴぃ"}, {"pyu", "ぴゅ"}, {"pye", "ぴぇ"}, {"pyo", "ぴょ"},
-    {"tsu", "つ"}, {"dzu", "づ"},
-    // Foreign sounds (must come before 2-char entries)
-    {"fa", "ふぁ"}, {"fi", "ふぃ"}, {"fu", "ふ"}, {"fe", "ふぇ"}, {"fo", "ふぉ"},
-    {"va", "ゔぁ"}, {"vi", "ゔぃ"}, {"vu", "ゔ"}, {"ve", "ゔぇ"}, {"vo", "ゔぉ"},
-    {"tha", "てぁ"}, {"thi", "てぃ"}, {"thu", "てゅ"}, {"the", "てぇ"}, {"tho", "てょ"},
-    {"dha", "でぁ"}, {"dhi", "でぃ"}, {"dhu", "でゅ"}, {"dhe", "でぇ"}, {"dho", "でょ"},
-    {"twa", "とぁ"}, {"twi", "とぃ"}, {"twu", "とぅ"}, {"twe", "とぇ"}, {"two", "とぉ"},
-    {"dwa", "どぁ"}, {"dwi", "どぃ"}, {"dwu", "どぅ"}, {"dwe", "どぇ"}, {"dwo", "どぉ"},
-    {"wha", "うぁ"}, {"whi", "うぃ"}, {"whu", "う"}, {"whe", "うぇ"}, {"who", "うぉ"},
-    {"qya", "くゃ"}, {"qyi", "くぃ"}, {"qyu", "くゅ"}, {"qye", "くぇ"}, {"qyo", "くょ"},
-    {"qa", "くぁ"}, {"qi", "くぃ"}, {"qe", "くぇ"}, {"qo", "くぉ"},
-    {"gwa", "ぐぁ"}, {"gwi", "ぐぃ"}, {"gwu", "ぐぅ"}, {"gwe", "ぐぇ"}, {"gwo", "ぐぉ"},
-    {"tsa", "つぁ"}, {"tsi", "つぃ"}, {"tse", "つぇ"}, {"tso", "つぉ"},
-    {"ka", "か"}, {"ki", "き"}, {"ku", "く"}, {"ke", "け"}, {"ko", "こ"},
-    {"sa", "さ"}, {"si", "し"}, {"su", "す"}, {"se", "せ"}, {"so", "そ"},
-    {"ta", "た"}, {"ti", "ち"}, {"tu", "つ"}, {"te", "て"}, {"to", "と"},
-    {"na", "な"}, {"ni", "に"}, {"nu", "ぬ"}, {"ne", "ね"}, {"no", "の"},
-    {"ha", "は"}, {"hi", "ひ"}, {"hu", "ふ"}, {"he", "へ"}, {"ho", "ほ"},
-    {"ma", "ま"}, {"mi", "み"}, {"mu", "む"}, {"me", "め"}, {"mo", "も"},
-    {"ya", "や"}, {"yi", "い"}, {"yu", "ゆ"}, {"ye", "いぇ"}, {"yo", "よ"},
-    {"ra", "ら"}, {"ri", "り"}, {"ru", "る"}, {"re", "れ"}, {"ro", "ろ"},
-    {"wa", "わ"}, {"wi", "ゐ"}, {"we", "ゑ"}, {"wo", "を"},
-    {"ga", "が"}, {"gi", "ぎ"}, {"gu", "ぐ"}, {"ge", "げ"}, {"go", "ご"},
-    {"za", "ざ"}, {"zi", "じ"}, {"zu", "ず"}, {"ze", "ぜ"}, {"zo", "ぞ"},
-    {"da", "だ"}, {"di", "ぢ"}, {"du", "づ"}, {"de", "で"}, {"do", "ど"},
-    {"ba", "ば"}, {"bi", "び"}, {"bu", "ぶ"}, {"be", "べ"}, {"bo", "ぼ"},
-    {"pa", "ぱ"}, {"pi", "ぴ"}, {"pu", "ぷ"}, {"pe", "ぺ"}, {"po", "ぽ"},
-    {"nn", "ん"}, {"n'", "ん"},
-    {"a", "あ"}, {"i", "い"}, {"u", "う"}, {"e", "え"}, {"o", "お"},
-    // Small kana (x- and l- prefixes, both supported like MS-IME)
-    {"xya", "ゃ"}, {"xyu", "ゅ"}, {"xyo", "ょ"}, {"xtu", "っ"}, {"xtsu", "っ"},
-    {"lya", "ゃ"}, {"lyu", "ゅ"}, {"lyo", "ょ"}, {"ltu", "っ"}, {"ltsu", "っ"},
-    {"xa", "ぁ"}, {"xi", "ぃ"}, {"xu", "ぅ"}, {"xe", "ぇ"}, {"xo", "ぉ"},
-    {"la", "ぁ"}, {"li", "ぃ"}, {"lu", "ぅ"}, {"le", "ぇ"}, {"lo", "ぉ"},
-    {"xwa", "ゎ"}, {"lwa", "ゎ"}, {"xke", "ヶ"}, {"xka", "ヵ"},
-    {"-", "ー"},
-    // Punctuation
-    {",", "、"}, {".", "。"},
-    {"!", "！"}, {"?", "？"},
-    {"/", "・"}, {"~", "〜"},
-    {"[", "「"}, {"]", "」"},
-    {"{", "｛"}, {"}", "｝"},
-    {"(", "（"}, {")", "）"},
-};
-
-// Convert romaji string to hiragana
-std::string romajiToHiragana(const std::string &input) {
-    std::string result;
-    size_t i = 0;
-    while (i < input.size()) {
-        // Handle double consonant (sokuon): same consonant twice
-        if (i + 1 < input.size() && input[i] == input[i + 1] &&
-            input[i] != 'a' && input[i] != 'i' && input[i] != 'u' &&
-            input[i] != 'e' && input[i] != 'o' && input[i] != 'n') {
-            result += "っ";
-            i++;
-            continue;
-        }
-
-        bool found = false;
-        // Try longest match first (4 chars, then 3, then 2, then 1)
-        for (int len = 4; len >= 1; len--) {
-            if (i + len > input.size()) continue;
-            std::string sub = input.substr(i, len);
-            for (const auto &[romaji, kana] : romajiTable) {
-                if (sub == romaji) {
-                    result += kana;
-                    i += len;
-                    found = true;
-                    break;
-                }
-            }
-            if (found) break;
-        }
-        if (!found) {
-            // Handle 'n' before non-vowel or end of string
-            if (input[i] == 'n' &&
-                (i + 1 >= input.size() ||
-                 (input[i + 1] != 'a' && input[i + 1] != 'i' &&
-                  input[i + 1] != 'u' && input[i + 1] != 'e' &&
-                  input[i + 1] != 'o' && input[i + 1] != 'y'))) {
-                result += "ん";
-                i++;
-            } else {
-                // Pass through unchanged
-                result += input[i];
-                i++;
-            }
-        }
-    }
-    return result;
-}
-
-// Count the number of UTF-8 characters in a string
-size_t utf8CharCount(const std::string &s) {
-    size_t count = 0;
-    for (size_t i = 0; i < s.size(); ) {
-        unsigned char c = s[i];
-        if (c < 0x80) i += 1;
-        else if (c < 0xE0) i += 2;
-        else if (c < 0xF0) i += 3;
-        else i += 4;
-        count++;
-    }
-    return count;
-}
-
-// Get the first N UTF-8 characters of a string
-std::string utf8Substr(const std::string &s, size_t start, size_t count) {
-    size_t charIdx = 0;
-    size_t byteStart = 0;
-    // Find byte offset for 'start' characters
-    for (size_t i = 0; i < s.size() && charIdx < start; ) {
-        unsigned char c = s[i];
-        if (c < 0x80) i += 1;
-        else if (c < 0xE0) i += 2;
-        else if (c < 0xF0) i += 3;
-        else i += 4;
-        charIdx++;
-        byteStart = i;
-    }
-    // Find byte length for 'count' characters
-    size_t charsRead = 0;
-    size_t byteEnd = byteStart;
-    for (size_t i = byteStart; i < s.size() && charsRead < count; ) {
-        unsigned char c = s[i];
-        if (c < 0x80) i += 1;
-        else if (c < 0xE0) i += 2;
-        else if (c < 0xF0) i += 3;
-        else i += 4;
-        charsRead++;
-        byteEnd = i;
-    }
-    return s.substr(byteStart, byteEnd - byteStart);
-}
 
 class LlmImeEngine : public InputMethodEngineV2 {
 public:
@@ -298,11 +144,6 @@ private:
         if (event.isRelease()) return;
         auto key = event.key();
 
-        {
-            std::ofstream log("/tmp/llm-ime-keys.log", std::ios::app);
-            log << "input key: sym=" << key.sym()
-                << " state=" << static_cast<uint32_t>(key.states()) << std::endl;
-        }
 
         // Ctrl+Tab with empty buffer -> request LLM continuation (async)
         if (key.check(Key(FcitxKey_Tab, KeyState::Ctrl)) && state->buffer_.size() == 0) {
@@ -349,6 +190,33 @@ private:
             return;
         }
 
+        // Cursor keys edit the reading before the conversion: one kana left or right, the ends, and the kana after the cursor
+        if (state->buffer_.size() > 0) {
+            const std::string input = state->buffer_.userInput();
+            const size_t cursor = state->buffer_.cursor();
+            bool handled = true;
+            if (key.check(Key(FcitxKey_Left))) {
+                state->buffer_.setCursor(movedByOneKana(input, cursor, -1));
+            } else if (key.check(Key(FcitxKey_Right))) {
+                state->buffer_.setCursor(movedByOneKana(input, cursor, +1));
+            } else if (key.check(Key(FcitxKey_Home))) {
+                state->buffer_.setCursor(0);
+            } else if (key.check(Key(FcitxKey_End))) {
+                state->buffer_.setCursor(input.size());
+            } else if (key.check(Key(FcitxKey_Delete))) {
+                if (cursor < input.size()) {
+                    state->buffer_.erase(cursor, movedByOneKana(input, cursor, +1));
+                }
+            } else {
+                handled = false;
+            }
+            if (handled) {
+                updatePreedit(ic, state);
+                event.filterAndAccept();
+                return;
+            }
+        }
+
         // Backspace
         if (key.check(Key(FcitxKey_BackSpace)) && state->buffer_.size() > 0) {
             state->buffer_.backspace();
@@ -373,11 +241,6 @@ private:
                              KeyEvent &event) {
         if (event.isRelease()) return;
         auto key = event.key();
-        {
-            std::ofstream log("/tmp/llm-ime-keys.log", std::ios::app);
-            log << "converting key: sym=" << key.sym()
-                << " state=" << static_cast<uint32_t>(key.states()) << std::endl;
-        }
 
         // Ctrl+Enter -> LLM full-sentence re-conversion (must be before Enter)
         if (key.check(Key(FcitxKey_Return, KeyState::Ctrl))) {
@@ -916,6 +779,7 @@ private:
             Text preedit;
             preedit.append(hiragana,
                            TextFormatFlag::Underline);
+            preedit.setCursor(shownCursorBytes(state->buffer_.userInput(), state->buffer_.cursor()));
             if (ic->capabilityFlags().test(CapabilityFlag::Preedit)) {
                 panel.setClientPreedit(preedit);
             } else {
@@ -981,17 +845,22 @@ private:
 
         // Build preedit showing current selected conversion for each segment
         Text preedit;
+        int activeStart = 0;   // byte offset of the active segment in the shown text: the cursor goes there
+        int shownBytes = 0;
         for (int i = 0; i < (int)state->segments_.size(); i++) {
             auto &seg = state->segments_[i];
             std::string display = seg.candidates[seg.selectedIndex];
             if (i == state->activeSegment_) {
+                activeStart = shownBytes;
                 preedit.append(display,
                                TextFormatFlag::HighLight);
             } else {
                 preedit.append(display,
                                TextFormatFlag::Underline);
             }
+            shownBytes += (int)display.size();
         }
+        preedit.setCursor(activeStart);
         // Set both client preedit and aux text for maximum compatibility
         panel.setClientPreedit(preedit);
         panel.setPreedit(preedit);

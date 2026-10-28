@@ -45,13 +45,17 @@ Server address: `http://localhost:8190` (set in `src/llm-ime-engine.cpp`).
 | Ctrl+Enter | convert the whole text with the LLM conversion |
 | Enter | commit (the hiragana as typed, or the converted text) |
 | Escape | cancel; in conversion mode, back to typing |
-| Backspace | delete one character |
-| Left / Right | previous / next bunsetsu |
+| Backspace | delete the letter before the cursor |
+| Left / Right | while typing: move the cursor in the reading by one kana; in conversion mode: previous / next bunsetsu |
+| Home / End / Delete | while typing: move the cursor to the start / the end of the reading; delete the kana after the cursor |
 | Shift+Left / Shift+Right | shorten / extend the bunsetsu |
 | Up / Down, 1 to 9 | choose a candidate |
 | Ctrl+Tab, Tab | ask for a continuation of the text; accept it (with an empty buffer) |
 
 Whether Ctrl+Enter reaches the engine depends on the application and on the fcitx5 settings.
+
+While typing, the cursor of the reading is shown in the preedit. In conversion mode the cursor is at the start of the
+bunsetsu that is being chosen (the highlighted one). The engine does not write a log of the keys.
 
 ## Build and install
 

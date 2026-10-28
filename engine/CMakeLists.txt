@@ -43,3 +43,9 @@ set_target_properties(llm-ime PROPERTIES
 install(TARGETS llm-ime DESTINATION "${FCITX_INSTALL_LIBDIR}")
 install(FILES src/llm-ime-addon.conf DESTINATION "${FCITX_INSTALL_ADDONDIR}" RENAME llm-ime.conf)
 install(FILES src/llm-ime.conf DESTINATION "${FCITX_INSTALL_PKGDATADIR}/inputmethod" RENAME llm-ime.conf)
+
+# Tests that need no fcitx5: the cursor of the reading
+enable_testing()
+add_executable(romaji-test test/romaji-test.cpp)
+target_include_directories(romaji-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME romaji-test COMMAND romaji-test)
