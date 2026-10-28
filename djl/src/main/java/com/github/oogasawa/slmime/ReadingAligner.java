@@ -94,8 +94,27 @@ public final class ReadingAligner {
         return tokens;
     }
 
+    /** The cheapest alignment of the tokens with the reading: where every token ends, and what it costs. */
+    private record Alignment(List<Integer> ends, double cost) {
+    }
+
     /** Returns, for every token, the reading position at which it ends; null if no alignment is cheap enough. */
     private static List<Integer> align(String reading, List<Token> tokens) {
+        Alignment alignment = cheapest(reading, tokens);
+        return alignment == null || alignment.cost > GIVE_UP_PER_TOKEN * tokens.size() ? null : alignment.ends;
+    }
+
+    /**
+     * What it costs to explain {@code text} as the conversion of the whole of {@code reading}: 0 when every kana of the
+     * text is where the reading has it and every run of kanji takes about as many characters as it usually does.
+     * Characters of the reading that the text does not account for make the cost high, or infinite.
+     */
+    public static double alignmentCost(String reading, String text) {
+        Alignment alignment = cheapest(reading, tokenize(List.of(text)));
+        return alignment == null ? Double.POSITIVE_INFINITY : alignment.cost;
+    }
+
+    private static Alignment cheapest(String reading, List<Token> tokens) {
         int m = reading.length();
         int n = tokens.size();
         double[][] cost = new double[n + 1][m + 1];
@@ -131,7 +150,7 @@ public final class ReadingAligner {
                 }
             }
         }
-        if (cost[n][m] >= INFINITY || cost[n][m] > GIVE_UP_PER_TOKEN * n) {
+        if (cost[n][m] >= INFINITY) {
             return null;
         }
         Integer[] ends = new Integer[n];
@@ -140,7 +159,7 @@ public final class ReadingAligner {
             ends[t - 1] = i;
             i = from[t][i];
         }
-        return Arrays.asList(ends);
+        return new Alignment(Arrays.asList(ends), cost[n][m]);
     }
 
     private static List<String> proportional(String reading, List<String> segments) {

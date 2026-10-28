@@ -62,7 +62,7 @@ public final class ImeApi {
         JsonObject request = JsonParser.parseString(body).getAsJsonObject();
         String input = text(request, "input");
         HistorySubstitution.Result answer = HistorySubstitution.apply(input,
-                segmentsOf(input, converter.convert(input, text(request, "context"))), history);
+                segmentsOf(input, covered(input, converter.convert(input, text(request, "context")))), history);
         JsonArray array = new JsonArray();
         for (int i = 0; i < answer.texts().size(); i++) {
             JsonObject segment = new JsonObject();
@@ -81,7 +81,7 @@ public final class ImeApi {
         JsonObject request = JsonParser.parseString(body).getAsJsonObject();
         String input = text(request, "input");
         HistorySubstitution.Result answer = HistorySubstitution.apply(input,
-                segmentsOf(input, converter.convert(input, text(request, "context"))), history);
+                segmentsOf(input, covered(input, converter.convert(input, text(request, "context")))), history);
         String own = String.join("", answer.texts());
         JsonObject response = new JsonObject();
         response.add("candidates", strings(withAlternatives(own, String.join("", answer.originals()), input,
@@ -131,7 +131,7 @@ public final class ImeApi {
         JsonObject request = JsonParser.parseString(body).getAsJsonObject();
         String input = text(request, "input");
         String joined = String.join("", HistorySubstitution.apply(input,
-                segmentsOf(input, converter.convert(input, text(request, "context"))), history).texts());
+                segmentsOf(input, covered(input, converter.convert(input, text(request, "context")))), history).texts());
         JsonObject response = new JsonObject();
         response.add("candidates", strings(List.of(joined)));
         response.addProperty("output", joined);
@@ -148,6 +148,51 @@ public final class ImeApi {
         all.add(original);
         all.addAll(alternatives.candidates(reading, wanted));
         return new ArrayList<>(all);
+    }
+
+    /** The model's answer is checked against the reading only if it cannot be explained better than this. */
+    private static final double UNEXPLAINED_COST = 3.0;
+    /** A reading explains the answer well if it costs no more than this. */
+    private static final double EXPLAINED_COST = 1.0;
+    /** The most characters of the end of a reading that are put back. */
+    private static final int MOST_PUT_BACK = 3;
+
+    /**
+     * The model leaves out the last characters of a reading that ends inside a word: asked to convert せいどがよ it
+     * answers 精度が. This puts the characters left out back, as they were typed (精度がよ). It does so only when the
+     * answer cannot be explained as the conversion of the whole reading but can be explained, well, as the
+     * conversion of the reading without its last one to three characters, and only for an answer of kanji, kana and
+     * punctuation (an answer with letters or digits, such as AI for えーあい, does not follow the reading character by
+     * character).
+     */
+    static String covered(String reading, String answer) {
+        if (answer == null || answer.isEmpty() || reading.length() < 2) {
+            return answer;
+        }
+        String plain = answer.replace("|", "");
+        if (plain.isEmpty() || !onlyJapanese(plain)
+                || ReadingAligner.alignmentCost(reading, plain) < UNEXPLAINED_COST) {
+            return answer;
+        }
+        for (int k = 1; k <= MOST_PUT_BACK && k < reading.length(); k++) {
+            if (ReadingAligner.alignmentCost(reading.substring(0, reading.length() - k), plain) <= EXPLAINED_COST) {
+                return answer + reading.substring(reading.length() - k);
+            }
+        }
+        return answer;
+    }
+
+    private static boolean onlyJapanese(String text) {
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            Character.UnicodeScript script = Character.UnicodeScript.of(c);
+            boolean japanese = script == Character.UnicodeScript.HIRAGANA || script == Character.UnicodeScript.KATAKANA
+                    || script == Character.UnicodeScript.HAN || "ー々、。！？「」『』（）…・".indexOf(c) >= 0;
+            if (!japanese) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static int wanted(JsonObject request) {

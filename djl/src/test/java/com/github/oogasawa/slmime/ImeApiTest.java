@@ -133,6 +133,47 @@ class ImeApiTest {
         assertEquals("デプロイされたかな", converted.get("output").getAsString());
     }
 
+    private static String outputOf(ImeApi api, String reading) {
+        return parse(call(() -> api.segmentCandidates("{\"input\":\"" + reading + "\"}"))).get("output").getAsString();
+    }
+
+    @Test
+    void theCharactersAtTheEndOfAReadingThatTheModelLeftOutAreCopiedBack() {
+        assertEquals("精度がよ", outputOf(new ImeApi((k, c) -> "精度が", CandidateSource.NONE), "せいどがよ"));
+        assertEquals("機械学習のあ", outputOf(new ImeApi((k, c) -> "機械学習の", CandidateSource.NONE), "きかいがくしゅうのあ"));
+        assertEquals("モデルをで", outputOf(new ImeApi((k, c) -> "モデルを", CandidateSource.NONE), "もでるをで"));
+        assertEquals("をでプロイしました",
+                outputOf(new ImeApi((k, c) -> "をでプロイしまし", CandidateSource.NONE), "をでぷろいしました"));
+    }
+
+    @Test
+    void anAnswerThatFollowsTheWholeReadingIsLeftAlone() {
+        assertEquals("精度が", outputOf(new ImeApi((k, c) -> "精度が", CandidateSource.NONE), "せいどが"));
+        assertEquals("倍は", outputOf(new ImeApi((k, c) -> "倍は", CandidateSource.NONE), "ばいは"));
+        assertEquals("アルゴリズム", outputOf(new ImeApi((k, c) -> "アルゴリズム", CandidateSource.NONE), "あるごりずむ"));
+        assertEquals("社会保障", outputOf(new ImeApi((k, c) -> "社会保障", CandidateSource.NONE), "しゃかいほしょう"));
+    }
+
+    @Test
+    void anAnswerWithLettersIsNotChecked() {
+        assertEquals("AI", outputOf(new ImeApi((k, c) -> "AI", CandidateSource.NONE), "えーあい"));
+        assertEquals("3.5倍", outputOf(new ImeApi((k, c) -> "3.5倍", CandidateSource.NONE), "さんてんごばい"));
+    }
+
+    @Test
+    void theBunsetsuOfAWholeConversionTogetherCoverTheWholeReading() {
+        ImeApi api = new ImeApi((k, c) -> "精度が", CandidateSource.NONE);     // the model dropped the よ
+        var segments = parse(call(() -> api.segmentConvert("{\"input\":\"せいどがよ\"}"))).getAsJsonArray("segments");
+        StringBuilder shown = new StringBuilder();
+        StringBuilder readings = new StringBuilder();
+        for (var segment : segments) {
+            shown.append(candidatesOf(segment.getAsJsonObject()).get(0));
+            readings.append(segment.getAsJsonObject().get("reading").getAsString());
+        }
+        assertEquals("精度がよ", shown.toString());
+        assertEquals("せいどがよ", readings.toString());
+    }
+
     @Test
     void thePassiveRequestsGetEmptyAnswers() {
         assertEquals("{}", api.record("{}"));
