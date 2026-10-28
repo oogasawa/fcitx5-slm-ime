@@ -13,7 +13,8 @@ With --context-chars N the rows look like what the editor sends while the user t
 The text before the cursor is the kanji text (without '|') of the sentences before in the same chunk, and of the
 bunsetsu of the same sentence before the cut. The reading to convert starts at a bunsetsu boundary of the sentence
 chosen at random and ends at a later one chosen at random, so that it is a few bunsetsu of the sentence, or all of
-what is left. SEP is the character the tokenizer reads as the [SEP] token. In --empty-percent of the rows the text
+what is left. With --partial-end-percent, some training rows get a twin whose reading stops inside the kana tail of its
+last bunsetsu (see partial_end_of). SEP is the character the tokenizer reads as the [SEP] token. In --empty-percent of the rows the text
 before the cursor is left empty (the source then starts with SEP), so that the model also converts well where the
 editor does not tell what is before the cursor. A sentence whose reading and kanji have different numbers of
 bunsetsu is used whole.
@@ -71,6 +72,35 @@ def cut_of(chunk_name: str, index: int, readings: list, kanjis: list):
     return start, end
 
 
+def is_hiragana(text: str) -> bool:
+    return bool(text) and all("\u3041" <= c <= "\u3096" or c == "ー" for c in text)
+
+
+def partial_end_of(reading: str, kanji: str, chunk_name: str, index: int):
+    """
+    Cut the last bunsetsu inside its kana tail, or return None when the cut cannot be decided.
+
+    The kana tail is the longest common suffix of the reading and the kanji text of the bunsetsu, as far as it is
+    hiragana: the okurigana and the particles, which are written the same in both. Removing c characters of it from
+    both gives a reading that stops mid-bunsetsu and the text the model must answer for it, for example
+    (せいどがよい, 精度がよい) -> (せいどがよ, 精度がよ). A cut inside the kanji part is not made, because the text
+    of half a word is not known. At least one character is left on each side.
+    """
+    common = 0
+    limit = min(len(reading), len(kanji))
+    while common < limit and reading[-1 - common] == kanji[-1 - common]:
+        common += 1
+    tail = reading[len(reading) - common:] if common else ""
+    while tail and not is_hiragana(tail):
+        tail = tail[1:]
+    longest = min(len(tail), len(reading) - 1, len(kanji) - 1)
+    if longest < 1:
+        return None
+    rng = random.Random(zlib.crc32(f"partial:{chunk_name}:{index}".encode("utf-8")))
+    c = rng.randint(1, longest)
+    return reading[:-c], kanji[:-c]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("pairs_dir")
@@ -82,6 +112,9 @@ def main() -> None:
                              "(then every row is a whole sentence)")
     parser.add_argument("--empty-percent", type=int, default=20,
                         help="share of the rows whose text before the cursor is left empty (with --context-chars)")
+    parser.add_argument("--partial-end-percent", type=int, default=0,
+                        help="share of the training rows that get one more row whose reading stops inside the kana "
+                             "tail of its last bunsetsu (with --context-chars); valid and test are left as they are")
     args = parser.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 
@@ -89,6 +122,7 @@ def main() -> None:
     rows = {"train": 0, "valid": 0, "test": 0}
     with_context = 0
     cut_in_sentence = 0
+    partial_rows = 0
     outputs = {name: open(os.path.join(args.out_dir, name + ".tsv"), "w", encoding="utf-8") for name in chunks}
     try:
         for name in sorted(os.listdir(args.pairs_dir)):
@@ -114,6 +148,15 @@ def main() -> None:
                 before = (before + kanji.replace("|", ""))[-4 * args.context_chars:]
                 outputs[split].write(source + "\t" + target + "\n")
                 rows[split] += 1
+                if split == "train" and args.partial_end_percent > 0 and len(readings) == len(kanjis) \
+                        and zlib.crc32(f"twin:{name}:{index}".encode("utf-8")) % 100 < args.partial_end_percent:
+                    partial = partial_end_of(readings[end - 1], kanjis[end - 1], name, index)
+                    if partial is not None:
+                        reading_text = "".join(readings[start:end - 1]) + partial[0]
+                        answer = "|".join(kanjis[start:end - 1] + [partial[1]])
+                        outputs[split].write(context + SEP_CHAR + reading_text + "\t" + answer + "\n")
+                        rows[split] += 1
+                        partial_rows += 1
     finally:
         for f in outputs.values():
             f.close()
@@ -124,6 +167,7 @@ def main() -> None:
     if args.context_chars > 0:
         print(f"rows with a non-empty text before the cursor: {with_context} of {total}")
         print(f"rows that start inside the sentence: {cut_in_sentence} of {total}")
+        print(f"rows that stop inside the kana tail of the last bunsetsu: {partial_rows}")
 
 
 if __name__ == "__main__":
