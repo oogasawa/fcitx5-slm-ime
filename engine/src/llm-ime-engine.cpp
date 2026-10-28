@@ -390,8 +390,6 @@ private:
                 std::string remaining = utf8Substr(next.reading, 1, nextLen - 1);
                 cur.reading += movedChar;
                 next.reading = remaining;
-                // Re-convert the modified next segment
-                reconvertSegment(state, idx + 1);
             }
         } else {
             // Shrink: give one char to next segment
@@ -403,7 +401,6 @@ private:
                 // Prepend to next segment
                 state->segments_[idx + 1].reading =
                     movedChar + state->segments_[idx + 1].reading;
-                reconvertSegment(state, idx + 1);
             } else {
                 // Create new segment after current
                 Segment newSeg;
@@ -411,12 +408,12 @@ private:
                 newSeg.candidates.push_back(movedChar);
                 state->segments_.insert(
                     state->segments_.begin() + idx + 1, std::move(newSeg));
-                reconvertSegment(state, idx + 1);
             }
         }
 
-        // Re-convert the active segment with its new reading
+        // Re-convert the active segment with its new reading, then everything after it
         reconvertSegment(state, idx);
+        reconvertRest(state, idx);
         updateConversionDisplay(ic, state);
     }
 
@@ -484,6 +481,61 @@ private:
             seg.candidates.clear();
             seg.candidates.push_back(seg.reading);
             seg.selectedIndex = 0;
+        }
+    }
+
+    // Convert again everything after segment 'idx', in one request. The text before the cursor is what the
+    // conversion started with plus what was chosen up to and including segment 'idx'. After a border was moved
+    // the segments behind it begin where the user put the border, often inside a word, and the model converts
+    // them better as one stretch of reading, which it cuts into bunsetsu itself, than one segment at a time.
+    // The segments made here are the server's offer, not the user's choice, so they are added to offered_.
+    void reconvertRest(LlmImeState *state, int idx) {
+        if (idx + 1 >= (int)state->segments_.size()) return;
+        std::string rest;
+        for (int i = idx + 1; i < (int)state->segments_.size(); i++) {
+            rest += state->segments_[i].reading;
+        }
+        std::string context = state->textBefore_;
+        for (int i = 0; i <= idx; i++) {
+            auto &s = state->segments_[i];
+            context += s.candidates[s.selectedIndex];
+        }
+
+        try {
+            json req = {{"input", rest}, {"n", 5}};
+            if (!context.empty()) {
+                req["context"] = context;
+            }
+            json resp = httpClient_.post("/api/segment-convert", req);
+            if (!resp.contains("segments")) return;
+
+            std::vector<Segment> fresh;
+            std::string joined;
+            for (auto &segJson : resp["segments"]) {
+                Segment s;
+                s.reading = segJson.value("reading", "");
+                if (segJson.contains("candidates")) {
+                    for (auto &c : segJson["candidates"]) {
+                        s.candidates.push_back(c.get<std::string>());
+                    }
+                }
+                if (s.reading.empty()) return;
+                if (s.candidates.empty()) {
+                    s.candidates.push_back(s.reading);
+                }
+                joined += s.reading;
+                fresh.push_back(std::move(s));
+            }
+            // Use the answer only if its segments are exactly the reading that was asked for
+            if (fresh.empty() || joined != rest) return;
+
+            state->segments_.erase(state->segments_.begin() + idx + 1, state->segments_.end());
+            for (auto &s : fresh) {
+                state->offered_.push_back({s.reading, s.candidates.front()});
+                state->segments_.push_back(std::move(s));
+            }
+        } catch (const std::exception &) {
+            // Keep the segments as they are
         }
     }
 
