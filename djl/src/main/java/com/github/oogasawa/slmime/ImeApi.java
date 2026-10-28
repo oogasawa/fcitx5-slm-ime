@@ -32,7 +32,7 @@ public final class ImeApi {
     }
 
     /** The user can pick among at least this many candidates for a bunsetsu, whatever the engine asked for. */
-    private static final int AT_LEAST_CANDIDATES = 8;
+    private static final int AT_LEAST_CANDIDATES = 50;
 
     private final Converter converter;
     private final CandidateSource alternatives;
