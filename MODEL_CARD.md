@@ -38,21 +38,18 @@ empty. Output: the kanji-kana text for the hiragana, with `|` between phrasal un
 
 ## Accuracy
 
-4,396 rows cut from test chunks of the same Wikipedia data. Character error rate (edit distance divided by the
-length of the reference, symbols unified; smaller is better):
+The examples are 4,396 stretches of sentences of the Japanese Wikipedia that were not used for training. Mozc and Anthy get the reading of an example; the model gets the reading and the text before the cursor. The character error rate is the edit distance between the output and the correct text, divided by the length of the correct text (symbols are unified); the smaller, the better. The exact match is the share of the examples whose output is the same as the correct text.
 
 | System | Character error rate | Exact match |
 |---|---|---|
 | This model, with the text before the cursor | 4.05 % | 75.5 % |
-| This model, empty text before the cursor (4,401 rows) | 4.66 % | 73.5 % |
-| Mozc (reading only) | 8.99 % | 56.5 % |
-| Anthy (reading only, no private dictionary) | 13.40 % | 47.1 % |
+| This model, empty text before the cursor (4,401 examples) | 4.66 % | 73.5 % |
+| Mozc | 8.99 % | 56.5 % |
+| Anthy (no private dictionary) | 13.40 % | 47.1 % |
 
-On 2,157 rows whose reading stops inside the okurigana or particles at the end of the last phrasal unit (bunsetsu),
-the model gives a character error rate of 4.98 % and an exact match of 70.2 %.
+On 2,157 examples whose reading stops inside the okurigana or particles at the end of the last phrasal unit (bunsetsu), the model gives a character error rate of 4.98 % and an exact match of 70.2 %.
 
-The measurement does not cover other kinds of text (books, chat, mail, technical writing). The reference
-conversions were made by a language model and contain errors.
+The correct texts were made by Gemma 4 and contain some errors. The measurement does not cover other kinds of text (books, chat, mail, technical writing).
 
 ## License and attribution
 
