@@ -1,0 +1,41 @@
+Source: fcitx5-slm-ime
+Section: utils
+Priority: optional
+Maintainer: Osamu Ogasawara <osamu.ogasawara@gmail.com>
+Build-Depends: debhelper-compat (= 13), cmake, pkg-config, libfcitx5core-dev, fcitx5-modules-dev, libcurl4-openssl-dev, nlohmann-json3-dev
+Standards-Version: 4.7.0
+Homepage: https://github.com/oogasawa/fcitx5-slm-ime
+Rules-Requires-Root: no
+
+Package: fcitx5-slm-ime
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, fcitx5, slm-ime-server (>= ${source:Version})
+Description: Japanese input method for fcitx5 using a small language model
+ Engine of fcitx5-slm-ime. It turns typed romaji into hiragana, sends the
+ reading and the text before the cursor to the conversion server
+ (slm-ime-server), and shows the answer bunsetsu by bunsetsu with candidates.
+ .
+ After the installation, restart fcitx5 and add "SLM IME" to the input methods
+ with fcitx5-configtool.
+
+Package: slm-ime-server
+Architecture: amd64
+Depends: ${misc:Depends}, openjdk-25-jre-headless, slm-ime-model (>= ${source:Version})
+Recommends: libanthy1t64
+Description: Conversion server of fcitx5-slm-ime (kana to kanji on a CPU)
+ HTTP server on 127.0.0.1:8190 that converts hiragana to kanji-kana text with
+ a small Transformer model, using the text before the cursor as context. It
+ runs on a CPU. The package contains the server, the PyTorch native libraries
+ that the server loads (so that it starts without network access), and a
+ systemd user service that starts it at login.
+ .
+ The choices of the user are kept in ~/.local/share/slm-ime/user_history.tsv.
+
+Package: slm-ime-model
+Architecture: all
+Depends: ${misc:Depends}
+Description: Trained model of fcitx5-slm-ime
+ TorchScript files and the tokenizer of the conversion model of
+ fcitx5-slm-ime: a character-level Transformer encoder-decoder with about 60
+ million parameters, trained on pairs of a reading and kanji-kana text made by
+ an LLM from the Japanese Wikipedia.

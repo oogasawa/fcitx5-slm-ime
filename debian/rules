@@ -1,0 +1,40 @@
+#!/usr/bin/make -f
+# Inputs that are made before the package is built:
+#   djl/target/slm-ime-server-*-shaded.jar   cd djl && rm -rf target && mvn install
+#   MODEL_DIR                                 the TorchScript model directory (export_torchscript.py)
+#   DJL_CACHE                                 the PyTorch native libraries that DJL downloaded once (~/.djl.ai)
+MODEL_DIR ?= $(CURDIR)/run_ctx_e7/model
+DJL_CACHE ?= $(HOME)/.djl.ai
+JAR := $(wildcard $(CURDIR)/djl/target/slm-ime-server-*-shaded.jar)
+
+%:
+	dh $@ --buildsystem=cmake --sourcedirectory=engine
+
+override_dh_auto_install:
+	dh_auto_install --destdir=debian/fcitx5-slm-ime
+	test -n "$(JAR)" && test "$(words $(JAR))" = 1
+	install -D -m 644 $(JAR) debian/slm-ime-server/usr/share/java/slm-ime-server.jar
+	install -D -m 755 debian/slm-ime-server.sh debian/slm-ime-server/usr/bin/slm-ime-server
+	mkdir -p debian/slm-ime-server/usr/lib/slm-ime-server/djl-cache
+	cp -a $(DJL_CACHE)/pytorch debian/slm-ime-server/usr/lib/slm-ime-server/djl-cache/
+	mkdir -p debian/slm-ime-model/usr/share/slm-ime
+	cp -a $(MODEL_DIR) debian/slm-ime-model/usr/share/slm-ime/model
+
+# The libraries of PyTorch are used as they are.
+override_dh_strip:
+	dh_strip -Xdjl-cache
+
+override_dh_shlibdeps:
+	dh_shlibdeps -Xdjl-cache
+
+override_dh_makeshlibs:
+	dh_makeshlibs -Xdjl-cache -Xfcitx5
+
+override_dh_dwz:
+	dh_dwz -Xdjl-cache
+
+override_dh_compress:
+	dh_compress -Xdjl-cache
+
+override_dh_builddeb:
+	dh_builddeb -- -Zzstd -z9

@@ -9,3 +9,15 @@ target/
 /archive/
 /models*/
 release_stage/
+
+# Debian build output (dpkg-buildpackage); the package sources in debian/ are tracked
+/debian/.debhelper/
+/debian/fcitx5-slm-ime/
+/debian/slm-ime-server/
+/debian/slm-ime-model/
+/debian/*.debhelper
+/debian/*.debhelper.log
+/debian/*.substvars
+/debian/debhelper-build-stamp
+/debian/files
+/obj-x86_64-linux-gnu/

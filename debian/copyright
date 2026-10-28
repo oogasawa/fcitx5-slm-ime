@@ -1,0 +1,19 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: fcitx5-slm-ime
+Source: https://github.com/oogasawa/fcitx5-slm-ime
+
+Files: *
+Copyright: 2026 Osamu Ogasawara
+License: Apache-2.0
+
+Files: usr/share/slm-ime/model/*
+Copyright: 2026 Osamu Ogasawara
+License: CC-BY-SA-4.0
+Comment: The trained weights. They are trained on text of the Japanese Wikipedia
+ (CC BY-SA 4.0).
+
+License: Apache-2.0
+ On Debian systems the full text is in /usr/share/common-licenses/Apache-2.0.
+
+License: CC-BY-SA-4.0
+ https://creativecommons.org/licenses/by-sa/4.0/legalcode
