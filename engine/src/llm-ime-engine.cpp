@@ -1,4 +1,5 @@
 #include "http-client.h"
+#include "corrections.h"
 #include "romaji.h"
 #include <fcitx-utils/log.h>
 #include <fcitx/addonfactory.h>
@@ -66,6 +67,8 @@ public:
     std::string fullHiragana_;
     // Text before the cursor when the conversion started (sent with every request of this conversion)
     std::string textBefore_;
+    // What the server offered when the conversion started: each bunsetsu with its first candidate
+    std::vector<Choice> offered_;
 };
 
 class LlmImeEngine : public InputMethodEngineV2 {
@@ -556,6 +559,7 @@ private:
                 state->segments_.push_back(std::move(s));
             }
 
+            rememberOffered(state);
             updateConversionDisplay(ic, state);
         } catch (const std::exception &e) {
             // On error, just commit the hiragana
@@ -613,12 +617,21 @@ private:
             s.candidates.push_back(hiragana);
             state->segments_.push_back(std::move(s));
 
+            rememberOffered(state);
             updateConversionDisplay(ic, state);
         } catch (const std::exception &) {
             // On error, fall back to normal Mozc conversion
             if (!state->converting_) {
                 startConversion(ic, state);
             }
+        }
+    }
+
+    // Remember what the server offered, to tell at commit time which bunsetsu the user changed.
+    void rememberOffered(LlmImeState *state) {
+        state->offered_.clear();
+        for (auto &seg : state->segments_) {
+            state->offered_.push_back({seg.reading, seg.candidates.front()});
         }
     }
 
@@ -631,15 +644,17 @@ private:
         ic->commitString(result);
 
         // Record conversion history asynchronously (fire and forget).
-        // "corrections" lists the segments for which the user took a candidate other than the first.
+        // "corrections" lists the segments the user changed: a candidate other than the first was taken, or a
+        // border between segments was moved (the first candidate of the new reading is then taken as it is).
         if (hiragana != result) {
             try {
-                json corrections = json::array();
+                std::vector<Choice> committed;
                 for (auto &seg : state->segments_) {
-                    if (seg.selectedIndex > 0) {
-                        corrections.push_back({{"reading", seg.reading},
-                                               {"chosen", seg.candidates[seg.selectedIndex]}});
-                    }
+                    committed.push_back({seg.reading, seg.candidates[seg.selectedIndex]});
+                }
+                json corrections = json::array();
+                for (auto &changed : changedChoices(state->offered_, committed)) {
+                    corrections.push_back({{"reading", changed.reading}, {"chosen", changed.text}});
                 }
                 json req = {{"input", hiragana}, {"output", result}, {"corrections", corrections}};
                 httpClient_.post("/api/record", req);
@@ -891,6 +906,7 @@ private:
         state->converting_ = false;
         state->llmMode_ = false;
         state->fullHiragana_.clear();
+        state->offered_.clear();
 
         auto &panel = ic->inputPanel();
         panel.reset();

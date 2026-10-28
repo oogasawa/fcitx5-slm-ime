@@ -16,7 +16,7 @@ include(GNUInstallDirs)
 # Use fcitx5 macro to get addon install dir
 set(FCITX_INSTALL_PKGDATADIR "${CMAKE_INSTALL_PREFIX}/share/fcitx5")
 set(FCITX_INSTALL_ADDONDIR "${FCITX_INSTALL_PKGDATADIR}/addon")
-set(FCITX_INSTALL_LIBDIR "${CMAKE_INSTALL_PREFIX}/lib/fcitx5")
+set(FCITX_INSTALL_LIBDIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/fcitx5")
 
 add_library(llm-ime MODULE
     src/llm-ime-engine.cpp
@@ -49,3 +49,8 @@ enable_testing()
 add_executable(romaji-test test/romaji-test.cpp)
 target_include_directories(romaji-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME romaji-test COMMAND romaji-test)
+
+# Tests that need no fcitx5: the bunsetsu that are learned
+add_executable(corrections-test test/corrections-test.cpp)
+target_include_directories(corrections-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME corrections-test COMMAND corrections-test)
