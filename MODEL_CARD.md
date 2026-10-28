@@ -1,6 +1,6 @@
-# Model card: fcitx5-slm-ime conversion model (epoch 7)
+# Model card: fcitx5-slm-ime conversion model (epoch 8)
 
-A small character-level Transformer (encoder-decoder, 58,372,653 parameters) that converts typed hiragana to
+A small character-level Transformer (encoder-decoder, 59,822,044 parameters) that converts typed hiragana to
 kanji-kana text with phrasal unit (bunsetsu) boundaries `|`. It reads the hiragana to convert together with the
 text before the cursor, and it runs on a CPU.
 
@@ -8,9 +8,9 @@ text before the cursor, and it runs on a CPU.
 
 | File | Content |
 |---|---|
-| `fcitx5-slm-ime-model-torchscript-epoch7.zip` | The files the inference server in `djl/` loads: `encoder_m512-12.pt`, `decoder_m512-12.pt`, `crosskv_m512-12.pt`, `step_m512-12.pt` and `tokenizer.json`, in a directory `model/`. Unzip it in the directory from which the server is started. |
-| `fcitx5-slm-ime-weights-epoch7.pt` | The weights, the model settings and the vocabulary size as a PyTorch checkpoint (`model_state`, `args`, `vocab_size`, `epoch`, `val_loss`), for training further or for exporting again with `export_torchscript.py`. The state of the optimizer is not included. |
-| `tokenizer.json` | The character vocabulary (9,261 entries). The checkpoint needs it. |
+| `fcitx5-slm-ime-model-torchscript-epoch8.zip` | The files the inference server in `djl/` loads: `encoder_m512-12.pt`, `decoder_m512-12.pt`, `crosskv_m512-12.pt`, `step_m512-12.pt` and `tokenizer.json`, in a directory `model/`. Unzip it in the directory from which the server is started. The Debian package `slm-ime-model` holds the same files. |
+| `fcitx5-slm-ime-weights-epoch8.pt` | The weights, the model settings and the vocabulary size as a PyTorch checkpoint (`model_state`, `args`, `vocab_size`, `epoch`, `val_loss`), for training further or for exporting again with `export_torchscript.py`. The state of the optimizer is not included. |
+| `tokenizer.json` | The character vocabulary (10,204 entries). The checkpoint needs it. |
 | `SHA256SUMS` | Checksums of the files above. |
 
 ## Input and output
@@ -22,26 +22,34 @@ empty. Output: the kanji-kana text for the hiragana, with `|` between phrasal un
 
 ## Training
 
-- Data: 1,368,372 rows made from sentences of the Japanese Wikipedia. Each row is a stretch of one sentence
-  that starts and ends at phrasal unit (bunsetsu) boundaries, with the text before it as the context (20 % of the rows have
-  an empty context). The reading of every sentence and the kanji-kana text with phrasal unit (bunsetsu) boundaries were made by
-  a large language model (Gemma 4, Apache License 2.0); they were not written by hand. The data is not
+- Data: 2,486,631 training rows and 23,867 validation rows made from sentences of the Japanese Wikipedia. Each row is a
+  stretch of one sentence that starts and ends at phrasal unit (bunsetsu) boundaries, with the text before it as the
+  context (20 % of the rows have an empty context). 20 % of the training rows were chosen to get one more row whose
+  reading stops inside the okurigana or particles at the end of its last phrasal unit (bunsetsu), as when the user has
+  typed only a part of them; a row whose last phrasal unit has no such kana tail gets none, so 227,151 rows were added
+  (2,259,480 rows without them). The reading of every sentence and the kanji-kana text with phrasal unit (bunsetsu) boundaries
+  were made by a large language model (Gemma 4, Apache License 2.0); they were not written by hand. The data is not
   distributed.
-- Settings: `d_model` 512, 8 heads, 6 encoder layers, 6 decoder layers, `d_ff` 2048, 8 epochs of 21,347 steps
-  at batch size 64. The checkpoint of epoch 7 has the lowest validation loss (0.1405); the model of epoch 8 gives
-  the same character error rate.
+- Settings: `d_model` 512, 8 heads, 6 encoder layers, 6 decoder layers, `d_ff` 2048, 8 epochs of 38,777 steps at batch
+  size 64.
+- The checkpoint of epoch 7 has the lowest validation loss (0.1309; epoch 8: 0.1313). The two were measured on the same
+  rows, and epoch 8 has the lower character error rate (4.05 % against 4.13 %), so epoch 8 is the one that is
+  released.
 
 ## Accuracy
 
-4,389 rows cut from test chunks of the same Wikipedia data. Character error rate (edit distance divided by the
+4,396 rows cut from test chunks of the same Wikipedia data. Character error rate (edit distance divided by the
 length of the reference, symbols unified; smaller is better):
 
 | System | Character error rate | Exact match |
 |---|---|---|
-| This model, with the text before the cursor | 4.58 % | 73.9 % |
-| This model, empty context | 5.17 % | 72.1 % |
-| Mozc (reading only) | 9.20 % | 55.0 % |
-| Anthy (reading only) | 13.37 % | 47.2 % |
+| This model, with the text before the cursor | 4.05 % | 75.5 % |
+| This model, empty text before the cursor (4,401 rows) | 4.66 % | 73.5 % |
+| Mozc (reading only) | 8.99 % | 56.5 % |
+| Anthy (reading only, no private dictionary) | 13.40 % | 47.1 % |
+
+On 2,157 rows whose reading stops inside the okurigana or particles at the end of the last phrasal unit (bunsetsu),
+the model gives a character error rate of 4.98 % and an exact match of 70.2 %.
 
 The measurement does not cover other kinds of text (books, chat, mail, technical writing). The reference
 conversions were made by a language model and contain errors.
