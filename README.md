@@ -75,7 +75,7 @@ The training was not optimized: the numbers above are those of the first trainin
 
 One conversion takes 70 to 260 ms on the CPU alone of a mini PC, the ASUS MINIPC PN51-S1: AMD Ryzen 7 5700U (8 cores, 16 threads, 1.8 GHz base clock, up to 4.37 GHz), 32 GB of dual-channel DDR4-3200 memory, no GPU. This is fast enough for daily typing, and the wait is not noticeable in use. On an arm64 machine, the NVIDIA DGX Spark with 20 cores (10 Cortex-X925 and 10 Cortex-A725), one conversion takes 110 to 200 ms on the CPU alone. The package limits PyTorch to 8 threads there, because with a thread on each of the 20 cores one conversion takes about 0.85 s.
 
-## Anthy for the alternative kanji
+## Integration of Anthy for the alternative kanji
 
 Once the SLM has decided the kanji-kana text and the phrasal units (bunsetsu), choosing among alternative kanji for
 one phrasal unit is a well-defined job, and Anthy (`libanthy`) is exactly the right tool for it. Anthy is installed
