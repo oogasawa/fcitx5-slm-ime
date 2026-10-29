@@ -1,4 +1,5 @@
 #include "http-client.h"
+#include "committed-text.h"
 #include "corrections.h"
 #include "romaji.h"
 #include <fcitx-utils/log.h>
@@ -69,6 +70,22 @@ public:
     std::string textBefore_;
     // What the server offered when the conversion started: each bunsetsu with its first candidate
     std::vector<Choice> offered_;
+    // The text committed in this input context (the last characters). It stands for the text before the cursor
+    // when the application does not tell it, and Ctrl+BackSpace takes the last commit back from its end.
+    std::string committed_;
+    // The last commit of a conversion, with the conversion as it was just before the commit, so that
+    // Ctrl+BackSpace can show it again. It is forgotten at the next key, at a reset and at the next commit.
+    struct LastCommit {
+        bool valid = false;
+        std::string text;
+        std::vector<Segment> segments;
+        int activeSegment = 0;
+        bool llmMode = false;
+        std::string fullHiragana;
+        std::string textBefore;
+        std::vector<Choice> offered;
+    };
+    LastCommit lastCommit_;
 };
 
 class LlmImeEngine : public InputMethodEngineV2 {
@@ -88,6 +105,20 @@ public:
     void keyEvent(const InputMethodEntry & /*entry*/, KeyEvent &event) override {
         auto *ic = event.inputContext();
         auto *state = ic->propertyFor(&factory_);
+
+        // Ctrl+BackSpace right after a commit takes the commit back; any other key forgets the commit
+        if (!event.isRelease()) {
+            auto key = event.key();
+            if (key.check(Key(FcitxKey_BackSpace, KeyState::Ctrl)) && state->lastCommit_.valid &&
+                !state->converting_ && state->buffer_.size() == 0 && continuationCandidates_.empty() &&
+                takeBackLastCommit(ic, state)) {
+                event.filterAndAccept();
+                return;
+            }
+            if (!key.isModifier()) {
+                state->lastCommit_.valid = false;
+            }
+        }
 
         // Handle continuation candidates FIRST (before anything else)
         if (!continuationCandidates_.empty() && !event.isRelease()) {
@@ -139,6 +170,7 @@ public:
         auto *ic = event.inputContext();
         auto *state = ic->propertyFor(&factory_);
         resetState(ic, state);
+        state->lastCommit_.valid = false;
     }
 
 private:
@@ -181,6 +213,7 @@ private:
         if (key.check(Key(FcitxKey_Return)) && state->buffer_.size() > 0) {
             std::string hiragana = romajiToHiragana(state->buffer_.userInput());
             ic->commitString(hiragana);
+            rememberCommitted(state, hiragana);
             resetState(ic, state);
             event.filterAndAccept();
             return;
@@ -569,12 +602,61 @@ private:
         return "";
     }
 
+    // Number of characters of committed text kept for each input context
+    static constexpr size_t kCommittedChars = 500;
+
+    // Whether the application tells the text around the cursor
+    static bool tellsSurroundingText(InputContext *ic) {
+        return ic->capabilityFlags().test(CapabilityFlag::SurroundingText) && ic->surroundingText().isValid();
+    }
+
+    // The text before the cursor for a conversion: what the application tells, or, when it tells nothing,
+    // the text committed in this input context
+    std::string textBeforeCursor(InputContext *ic, LlmImeState *state) {
+        return tellsSurroundingText(ic) ? getSurroundingContext(ic) : state->committed_;
+    }
+
+    static void rememberCommitted(LlmImeState *state, const std::string &text) {
+        state->committed_ = appendCommitted(state->committed_, text, kCommittedChars);
+    }
+
+    // Take the last commit back (Ctrl+BackSpace right after it): delete the committed text in the application and
+    // show the conversion again as it was just before the commit. False when the text before the cursor no longer
+    // ends with the commit, so that the key goes to the application as it is.
+    bool takeBackLastCommit(InputContext *ic, LlmImeState *state) {
+        LlmImeState::LastCommit last = state->lastCommit_;
+        state->lastCommit_.valid = false;
+        const size_t chars = utf8CharCount(last.text);
+        if (tellsSurroundingText(ic)) {
+            if (!endsWithText(getSurroundingContext(ic), last.text)) {
+                return false;
+            }
+            ic->deleteSurroundingText(-static_cast<int>(chars), static_cast<unsigned int>(chars));
+        } else {
+            // The application tells nothing: one BackSpace for each character
+            for (size_t i = 0; i < chars; i++) {
+                ic->forwardKey(Key(FcitxKey_BackSpace), false);
+                ic->forwardKey(Key(FcitxKey_BackSpace), true);
+            }
+        }
+        state->committed_ = withoutEnd(state->committed_, last.text);
+        state->segments_ = std::move(last.segments);
+        state->activeSegment_ = last.activeSegment;
+        state->llmMode_ = last.llmMode;
+        state->fullHiragana_ = std::move(last.fullHiragana);
+        state->textBefore_ = std::move(last.textBefore);
+        state->offered_ = std::move(last.offered);
+        state->converting_ = true;
+        updateConversionDisplay(ic, state);
+        return true;
+    }
+
     void startConversion(InputContext *ic, LlmImeState *state) {
         std::string hiragana = romajiToHiragana(state->buffer_.userInput());
         state->fullHiragana_ = hiragana;
 
         try {
-            std::string context = getSurroundingContext(ic);
+            std::string context = textBeforeCursor(ic, state);
             state->textBefore_ = context;
             json req = {{"input", hiragana}, {"n", 5}};
             if (!context.empty()) {
@@ -616,6 +698,7 @@ private:
         } catch (const std::exception &e) {
             // On error, just commit the hiragana
             ic->commitString(hiragana);
+            rememberCommitted(state, hiragana);
             resetState(ic, state);
         }
     }
@@ -633,7 +716,7 @@ private:
         state->fullHiragana_ = hiragana;
 
         try {
-            std::string context = getSurroundingContext(ic);
+            std::string context = textBeforeCursor(ic, state);
             state->textBefore_ = context;
             json req = {{"input", hiragana}};
             if (!context.empty()) {
@@ -693,6 +776,8 @@ private:
         for (auto &seg : state->segments_) {
             result += seg.candidates[seg.selectedIndex];
         }
+        state->lastCommit_ = {true, result, state->segments_, state->activeSegment_, state->llmMode_,
+                              state->fullHiragana_, state->textBefore_, state->offered_};
         ic->commitString(result);
 
         // Record what the user changed asynchronously (fire and forget). "corrections" lists the segments the user
@@ -716,13 +801,7 @@ private:
             // Ignore record failures
         }
 
-        // Track committed text for continuation
-        committedContext_ += result;
-        // Keep last 500 chars
-        if (committedContext_.size() > 500) {
-            committedContext_ = committedContext_.substr(
-                committedContext_.size() - 500);
-        }
+        rememberCommitted(state, result);
 
         resetState(ic, state);
     }
@@ -733,13 +812,7 @@ private:
 
         std::string text = continuationCandidates_[index];
         ic->commitString(text);
-
-        // Update context
-        committedContext_ += text;
-        if (committedContext_.size() > 500) {
-            committedContext_ = committedContext_.substr(
-                committedContext_.size() - 500);
-        }
+        rememberCommitted(ic->propertyFor(&factory_), text);
 
         // Clear continuation state
         continuationCandidates_.clear();
@@ -753,7 +826,7 @@ private:
 
     // Request LLM continuation asynchronously
     void fetchContinuationAsync(InputContext *ic) {
-        std::string context = committedContext_;
+        std::string context = ic->propertyFor(&factory_)->committed_;
         if (context.empty()) return;
 
         // Show loading indicator
@@ -972,7 +1045,6 @@ private:
     llm_ime::HttpClient predictClient_;
     FactoryFor<LlmImeState> factory_;
     EventDispatcher dispatcher_;
-    std::string committedContext_;  // rolling context for continuation
     std::vector<std::string> continuationCandidates_;  // current continuation candidates
     int continuationIndex_ = 0;    // currently highlighted continuation candidate
 };

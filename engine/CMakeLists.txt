@@ -54,3 +54,8 @@ add_test(NAME romaji-test COMMAND romaji-test)
 add_executable(corrections-test test/corrections-test.cpp)
 target_include_directories(corrections-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME corrections-test COMMAND corrections-test)
+
+# Tests that need no fcitx5: the committed text that stands for the text before the cursor and that can be taken back
+add_executable(committed-text-test test/committed-text-test.cpp)
+target_include_directories(committed-text-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME committed-text-test COMMAND committed-text-test)
