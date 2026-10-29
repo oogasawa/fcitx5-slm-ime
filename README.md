@@ -73,7 +73,7 @@ The training was not optimized: the numbers above are those of the first trainin
 
 ## Speed
 
-One conversion takes 70 to 260 ms on the CPU alone of a mini PC, the ASUS MINIPC PN51-S1: AMD Ryzen 7 5700U (8 cores, 16 threads, 1.8 GHz base clock, up to 4.37 GHz), 32 GB of dual-channel DDR4-3200 memory, no GPU. This is fast enough for daily typing, and the wait is not noticeable in use.
+One conversion takes 70 to 260 ms on the CPU alone of a mini PC, the ASUS MINIPC PN51-S1: AMD Ryzen 7 5700U (8 cores, 16 threads, 1.8 GHz base clock, up to 4.37 GHz), 32 GB of dual-channel DDR4-3200 memory, no GPU. This is fast enough for daily typing, and the wait is not noticeable in use. On an arm64 machine, the NVIDIA DGX Spark with 20 cores (10 Cortex-X925 and 10 Cortex-A725), one conversion takes 110 to 200 ms on the CPU alone. The package limits PyTorch to 8 threads there, because with a thread on each of the 20 cores one conversion takes about 0.85 s.
 
 ## Anthy for the alternative kanji
 
@@ -112,11 +112,13 @@ of the system is not changed:
 
 `apt` installs the declared packages by itself. But these three packages are on GitHub Releases and not in an `apt`
 repository, so `apt` can find `slm-ime-server` and `slm-ime-model` only if their files are named on the command line.
-Download the three `.deb` files of the latest release from <https://github.com/oogasawa/fcitx5-slm-ime/releases> into
-one directory and run this command in it:
+The release has `fcitx5-slm-ime` and `slm-ime-server` for two CPU architectures, `amd64` and `arm64`, and one
+`slm-ime-model` for both. `dpkg --print-architecture` prints the architecture of the machine. Download the three
+`.deb` files for it from <https://github.com/oogasawa/fcitx5-slm-ime/releases> into one directory and run this
+command in it:
 
 ```bash
-sudo apt install ./fcitx5-slm-ime_*.deb ./slm-ime-server_*.deb ./slm-ime-model_*.deb
+sudo apt install ./fcitx5-slm-ime_*_$(dpkg --print-architecture).deb ./slm-ime-server_*_$(dpkg --print-architecture).deb ./slm-ime-model_*_all.deb
 ```
 
 The conversion server is a systemd user service that starts at login and listens on `127.0.0.1:8190`, so log in
