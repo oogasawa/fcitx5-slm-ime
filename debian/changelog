@@ -1,3 +1,9 @@
+fcitx5-slm-ime (1.1.0~SNAPSHOT) unstable; urgency=low
+
+  * Development version of 1.1.0.
+
+ -- Osamu Ogasawara <osamu.ogasawara@gmail.com>  Thu, 29 Oct 2026 23:44:54 +0900
+
 fcitx5-slm-ime (1.0.0) unstable; urgency=low
 
   * First public version.
