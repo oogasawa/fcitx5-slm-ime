@@ -45,6 +45,8 @@ public class KanjiServer {
     private static final boolean STOP_ON_REPEAT = Boolean.parseBoolean(System.getProperty("stop.repeat", "false"));
 
     private final CharTokenizer tokenizer;
+    /** The token of '|', which the model writes between the bunsetsu. */
+    private final int barId;
     private final ZooModel<NDList, NDList> encModel;
     private final ZooModel<NDList, NDList> decModel;
     private final Predictor<NDList, NDList> encoder;
@@ -68,6 +70,7 @@ public class KanjiServer {
     public KanjiServer(String modelDir, String tokenizerPath) throws Exception {
         log.info("Loading tokenizer...");
         tokenizer = CharTokenizer.load(tokenizerPath);
+        barId = tokenizer.encodeChars("|").get(0);
         log.info("Tokenizer loaded: vocab_size=" + tokenizer.vocabSize());
 
         Criteria<NDList, NDList> encCrit = Criteria.builder()
@@ -197,7 +200,9 @@ public class KanjiServer {
         }
         List<Integer> srcIds = SourceIds.of(tokenizer, context, input, USE_CONTEXT, CONTEXT_CHARS);
         int srcLen = srcIds.size();
-        // The output is about as long as the reading, whatever the text before the cursor.
+        // The text is about as long as the reading, whatever the text before the cursor. The '|' between the bunsetsu
+        // are not counted: a reading of many bunsetsu with long kana tails would lose its last characters
+        // (きょうは...ことにする gave ...ことにす).
         int readingLen = tokenizer.encodeChars(input).size() + 1;
 
         try (NDManager sub = manager.newSubManager()) {
@@ -213,7 +218,8 @@ public class KanjiServer {
             tgtList.add((long) BOS_ID);
             Stepper stepper = step != null ? new CachedStepper(sub, memory) : new FullPrefixStepper(sub, memory, srcLen);
 
-            for (int stepNo = 0; stepNo < readingLen + 5; stepNo++) {
+            int textLen = 0;
+            for (int stepNo = 0; stepNo < 2 * readingLen + 5; stepNo++) {
                 NDArray lastLogits = stepper.logitsOfLast(tgtList);
 
                 float eosLogit = lastLogits.getFloat(EOS_ID);
@@ -228,7 +234,8 @@ public class KanjiServer {
 
                 outputIds.add((int) nextId);
                 tgtList.add(nextId);
-                if (outputIds.size() >= readingLen) break;
+                if (nextId != barId) textLen++;
+                if (textLen >= readingLen) break;
             }
             return tokenizer.decode(outputIds);
         }
