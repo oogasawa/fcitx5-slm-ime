@@ -95,6 +95,7 @@ def train(args: argparse.Namespace) -> None:
     os.makedirs(ckpt_dir, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
+    use_amp = args.amp == "bf16" and device.type == "cuda"
 
     # Load data
     train_pairs = load_tsv(os.path.join(args.data_dir, "train.tsv"))
@@ -172,8 +173,9 @@ def train(args: argparse.Namespace) -> None:
             tgt_in = tgt[:, :-1]
             tgt_out = tgt[:, 1:]
 
-            logits = model(src, tgt_in)  # (B, T-1, V)
-            loss = criterion(logits.reshape(-1, tokenizer.vocab_size), tgt_out.reshape(-1))
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=use_amp):
+                logits = model(src, tgt_in)  # (B, T-1, V)
+            loss = criterion(logits.float().reshape(-1, tokenizer.vocab_size), tgt_out.reshape(-1))
 
             optimizer.zero_grad()
             loss.backward()
@@ -182,6 +184,13 @@ def train(args: argparse.Namespace) -> None:
             scheduler.step()
 
             total_loss += loss.item()
+            if args.max_steps and step >= args.max_steps:
+                torch.cuda.synchronize()
+                took = time.time() - t0
+                print(f"BENCH amp={args.amp} batch={args.batch_size} steps={step} "
+                      f"{1000 * took / step:.1f} ms/step loss={total_loss / step:.4f} "
+                      f"peak_memory={torch.cuda.max_memory_allocated() / 2**30:.1f}GiB")
+                sys.exit(0)
             if step % 500 == 0:
                 avg = total_loss / step
                 elapsed = time.time() - t0
@@ -199,8 +208,9 @@ def train(args: argparse.Namespace) -> None:
                 tgt = tgt.to(device)
                 tgt_in = tgt[:, :-1]
                 tgt_out = tgt[:, 1:]
-                logits = model(src, tgt_in)
-                loss = criterion(logits.reshape(-1, tokenizer.vocab_size), tgt_out.reshape(-1))
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=use_amp):
+                    logits = model(src, tgt_in)
+                loss = criterion(logits.float().reshape(-1, tokenizer.vocab_size), tgt_out.reshape(-1))
                 val_loss += loss.item()
         val_loss /= len(valid_loader)
 
@@ -242,6 +252,10 @@ def parse_args() -> argparse.Namespace:
                    help="Checkpoint subdirectory name (e.g. m256, m512, m768)")
     p.add_argument("--epochs", type=int, default=20)
     p.add_argument("--batch-size", type=int, default=512)
+    p.add_argument("--amp", choices=["none", "bf16"], default="bf16",
+                   help="bf16: the forward pass runs in bfloat16 autocast; the loss, the weights and the optimizer stay float32")
+    p.add_argument("--max-steps", type=int, default=0,
+                   help="stop after this many steps of the first epoch and print the time per step (0: train normally)")
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--d-model", type=int, default=256)
     p.add_argument("--nhead", type=int, default=8)
