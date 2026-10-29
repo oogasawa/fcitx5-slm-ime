@@ -97,6 +97,9 @@ def train(args: argparse.Namespace) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
     use_amp = args.amp == "bf16" and device.type == "cuda"
+    # The cuDNN attention kernel, on by default in PyTorch 2.5.0, makes a bf16 step about 12 times slower than an
+    # fp32 step on the RTX 4080 (1804 ms against 144 ms); without it a bf16 step takes 72 ms.
+    torch.backends.cuda.enable_cudnn_sdp(False)
 
     # Load data
     train_pairs = load_tsv(os.path.join(args.data_dir, "train.tsv"))
