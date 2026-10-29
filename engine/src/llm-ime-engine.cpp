@@ -71,10 +71,10 @@ public:
     // What the server offered when the conversion started: each bunsetsu with its first candidate
     std::vector<Choice> offered_;
     // The text committed in this input context (the last characters). It stands for the text before the cursor
-    // when the application does not tell it, and Ctrl+Shift+BackSpace takes the last commit back from its end.
+    // when the application does not tell it, and Ctrl+Shift+Insert takes the last commit back from its end.
     std::string committed_;
     // The last commit of a conversion, with the conversion as it was just before the commit, so that
-    // Ctrl+Shift+BackSpace can show it again. It is forgotten at the next key, at a reset and at the next commit.
+    // Ctrl+Shift+Insert can show it again. It is forgotten at the next key, at a reset and at the next commit.
     struct LastCommit {
         bool valid = false;
         std::string text;
@@ -106,14 +106,17 @@ public:
         auto *ic = event.inputContext();
         auto *state = ic->propertyFor(&factory_);
 
-        // Ctrl+Shift+BackSpace right after a commit takes the commit back; any other key forgets the commit.
-        // Ctrl+BackSpace is not used, because editors such as Emacs delete the word before the cursor with it.
+        // Ctrl+Shift+Insert right after a commit takes the commit back; any other key forgets the commit.
+        // The key never goes to the application, even when there is nothing to take back, because the applications
+        // bind keys like it to deletions (Emacs: Ctrl+BackSpace and Ctrl+Shift+BackSpace delete a word and a line).
         if (!event.isRelease()) {
             auto key = event.key();
-            if (key.check(Key(FcitxKey_BackSpace, KeyStates{KeyState::Ctrl, KeyState::Shift})) &&
-                state->lastCommit_.valid &&
-                !state->converting_ && state->buffer_.size() == 0 && continuationCandidates_.empty() &&
-                takeBackLastCommit(ic, state)) {
+            if (key.check(Key(FcitxKey_Insert, KeyStates{KeyState::Ctrl, KeyState::Shift}))) {
+                if (state->lastCommit_.valid && !state->converting_ && state->buffer_.size() == 0 &&
+                    continuationCandidates_.empty()) {
+                    takeBackLastCommit(ic, state);
+                }
+                state->lastCommit_.valid = false;
                 event.filterAndAccept();
                 return;
             }
@@ -622,9 +625,9 @@ private:
         state->committed_ = appendCommitted(state->committed_, text, kCommittedChars);
     }
 
-    // Take the last commit back (Ctrl+Shift+BackSpace right after it): delete the committed text in the application and
-    // show the conversion again as it was just before the commit. False when the text before the cursor no longer
-    // ends with the commit, so that the key goes to the application as it is.
+    // Take the last commit back (Ctrl+Shift+Insert right after it): delete the committed text in the application and
+    // show the conversion again as it was just before the commit. False, and nothing is changed, when the text before
+    // the cursor no longer ends with the commit.
     bool takeBackLastCommit(InputContext *ic, LlmImeState *state) {
         LlmImeState::LastCommit last = state->lastCommit_;
         state->lastCommit_.valid = false;
