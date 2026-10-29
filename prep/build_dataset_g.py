@@ -11,8 +11,11 @@ With --context-chars N the rows look like what the editor sends while the user t
           source = <last N characters of the text before the cursor> SEP <reading to convert>
           target = <conversion of that reading>
 The text before the cursor is the kanji text (without '|') of the sentences before in the same chunk, and of the
-bunsetsu of the same sentence before the cut. The reading to convert starts at a bunsetsu boundary of the sentence
-chosen at random and ends at a later one chosen at random, so that it is a few bunsetsu of the sentence, or all of
+bunsetsu of the same sentence before the cut. In the chunks whose name starts with a prefix of --page-is-document
+(the FineWeb chunks), every page is a stretch of a different web page, so the text before the cursor starts afresh
+at every page. In the Wikipedia chunks a page is one paragraph and the next page is the next paragraph of the same
+article, so the text before the cursor goes on across pages. The reading to convert starts at a bunsetsu boundary of
+the sentence chosen at random and ends at a later one chosen at random, so that it is a few bunsetsu of the sentence, or all of
 what is left. With --partial-end-percent, some training rows get a twin whose reading stops inside the kana tail of its
 last bunsetsu (see partial_end_of). SEP is the character the tokenizer reads as the [SEP] token. In --empty-percent of the rows the text
 before the cursor is left empty (the source then starts with SEP), so that the model also converts well where the
@@ -44,7 +47,7 @@ def split_of(chunk_name: str, valid_percent: int, test_percent: int) -> str:
 
 
 def rows_of(path: str):
-    """Yield (reading with '|', kanji with '|') in the order of the file."""
+    """Yield (reading with '|', kanji with '|', page) in the order of the file."""
     with open(path, encoding="utf-8") as f:
         for line in f:
             columns = line.rstrip("\n").split("\t")
@@ -53,7 +56,7 @@ def rows_of(path: str):
             reading, kanji = columns[0].strip(), columns[1].strip()
             if not reading or not kanji:
                 continue
-            yield reading, kanji
+            yield reading, kanji, columns[2] if len(columns) > 2 else ""
 
 
 def keeps_context_empty(chunk_name: str, index: int, empty_percent: int) -> bool:
@@ -115,6 +118,9 @@ def main() -> None:
     parser.add_argument("--partial-end-percent", type=int, default=0,
                         help="share of the training rows that get one more row whose reading stops inside the kana "
                              "tail of its last bunsetsu (with --context-chars); valid and test are left as they are")
+    parser.add_argument("--page-is-document", nargs="*", default=["fw_"],
+                        help="prefixes of the chunk names whose every page is a different document; the text before "
+                             "the cursor starts afresh at each of their pages (with --context-chars)")
     args = parser.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 
@@ -131,11 +137,16 @@ def main() -> None:
             split = split_of(name, args.valid_percent, args.test_percent)
             chunks[split] += 1
             before = ""
-            for index, (reading, kanji) in enumerate(rows_of(os.path.join(args.pairs_dir, name))):
+            page_before = None
+            page_is_document = name.startswith(tuple(args.page_is_document))
+            for index, (reading, kanji, page) in enumerate(rows_of(os.path.join(args.pairs_dir, name))):
                 if args.context_chars <= 0:
                     outputs[split].write(reading.replace("|", "") + "\t" + kanji + "\n")
                     rows[split] += 1
                     continue
+                if page != page_before and page_is_document:
+                    before = ""
+                page_before = page
                 readings, kanjis = reading.split("|"), kanji.split("|")
                 start, end = cut_of(name, index, readings, kanjis)
                 context = "" if keeps_context_empty(name, index, args.empty_percent) \

@@ -4,7 +4,8 @@ Training script for kana-kanji Transformer.
 Usage: python3 train.py --data-dir DATA_DIR --run-name NAME --epochs 8 --batch-size 64 \
     --d-model 512 --nhead 8 --enc-layers 6 --dec-layers 6 --d-ff 2048 --max-len 192
 
-Checkpoints are saved to checkpoints/<run-name>/
+Checkpoints are saved to checkpoints/<run-name>/: last.pt (to resume), best.pt (lowest validation loss) and
+epoch_NN.pt (the weights after every epoch).
 """
 
 import os
@@ -234,6 +235,10 @@ def train(args: argparse.Namespace) -> None:
             "vocab_size": tokenizer.vocab_size,
         }
         torch.save(ckpt, os.path.join(ckpt_dir, "last.pt"))
+        # Every epoch is kept, so that a later epoch that converts worse can be gone back from. Only the weights:
+        # last.pt alone is enough to resume, and the optimizer state would double the size.
+        torch.save({k: v for k, v in ckpt.items() if k not in ("optimizer_state", "scheduler_state")},
+                   os.path.join(ckpt_dir, f"epoch_{epoch:02d}.pt"))
 
         if is_best:
             torch.save(ckpt, os.path.join(ckpt_dir, "best.pt"))
