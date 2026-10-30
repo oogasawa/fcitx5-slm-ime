@@ -81,6 +81,17 @@ add_executable(committed-text-test test/committed-text-test.cpp)
 target_include_directories(committed-text-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME committed-text-test COMMAND committed-text-test)
 
+# Tests that need no fcitx5: the reading in other kinds of characters (F6 to F10)
+add_executable(char-kinds-test test/char-kinds-test.cpp)
+target_include_directories(char-kinds-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME char-kinds-test COMMAND char-kinds-test)
+
+# Tests of the key binding profiles (the fcitx5 utilities read the keys)
+add_executable(key-actions-test test/key-actions-test.cpp)
+target_include_directories(key-actions-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(key-actions-test PRIVATE Fcitx5::Utils)
+add_test(NAME key-actions-test COMMAND key-actions-test)
+
 # The model against the answers of PyTorch (needs SLM_IME_WEIGHTS and SLM_IME_GOLDEN; skipped without them)
 add_executable(model-check test/model-check.cpp)
 target_link_libraries(model-check PRIVATE slm-ime-model)

@@ -1,7 +1,10 @@
 #include "local-conversion.h"
+#include "char-kinds.h"
 #include "committed-text.h"
 #include "corrections.h"
 #include "romaji.h"
+#include "slm-ime-config.h"
+#include <fcitx-config/iniparser.h>
 #include <fcitx-utils/log.h>
 #include <fcitx/addonfactory.h>
 #include <fstream>
@@ -16,6 +19,7 @@
 #include <fcitx-utils/key.h>
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <thread>
@@ -127,18 +131,32 @@ public:
         instance->inputContextManager().registerProperty("llmImeState",
                                                           &factory_);
         dispatcher_.attach(&instance->eventLoop());
+        reloadConfig();
+    }
+
+    // The configuration: the key binding profile and the keys of the Custom profile
+    void reloadConfig() override {
+        readAsIni(config_, kConfigFile);
+        applyKeys();
+    }
+    const Configuration *getConfig() const override { return &config_; }
+    void setConfig(const RawConfig &raw) override {
+        config_.load(raw, true);
+        safeSaveAsIni(config_, kConfigFile);
+        applyKeys();
     }
 
     void keyEvent(const InputMethodEntry & /*entry*/, KeyEvent &event) override {
         auto *ic = event.inputContext();
         auto *state = ic->propertyFor(&factory_);
 
-        // Ctrl+Shift+Insert right after a commit takes the commit back; any other key forgets the commit.
+        // The take-back key (Ctrl+Shift+Insert) right after a commit takes the commit back; any other key forgets the
+        // commit.
         // The key never goes to the application, even when there is nothing to take back, because the applications
         // bind keys like it to deletions (Emacs: Ctrl+BackSpace and Ctrl+Shift+BackSpace delete a word and a line).
         if (!event.isRelease()) {
             auto key = event.key();
-            if (key.check(Key(FcitxKey_Insert, KeyStates{KeyState::Ctrl, KeyState::Shift}))) {
+            if (is(key, Action::TakeBack)) {
                 if (state->lastCommit_.valid && !state->converting_ && state->buffer_.size() == 0 &&
                     continuationCandidates_.empty()) {
                     takeBackLastCommit(ic, state);
@@ -227,22 +245,33 @@ private:
             }
         }
 
-        // Ctrl+Enter with input -> LLM full-sentence conversion
-        if (key.check(Key(FcitxKey_Return, KeyState::Ctrl)) && state->buffer_.size() > 0) {
+        if (state->buffer_.size() == 0) {
+            return;  // the keys below act on the reading; without one they go to the application
+        }
+
+        // The model's conversion of the whole reading
+        if (is(key, Action::ModelConvert)) {
             startLlmConversion(ic, state);
             event.filterAndAccept();
             return;
         }
 
-        // Space with input -> start conversion (Mozc)
-        if (key.check(Key(FcitxKey_space)) && state->buffer_.size() > 0) {
+        // Start the conversion
+        if (is(key, Action::Convert)) {
             startConversion(ic, state);
             event.filterAndAccept();
             return;
         }
 
-        // Enter -> commit raw hiragana
-        if (key.check(Key(FcitxKey_Return)) && state->buffer_.size() > 0) {
+        // The whole reading in another kind of characters (F6 to F10)
+        if (auto kind = kindAction(key)) {
+            startKindConversion(ic, state, *kind);
+            event.filterAndAccept();
+            return;
+        }
+
+        // Commit the reading as hiragana
+        if (is(key, Action::Commit)) {
             std::string hiragana = romajiToHiragana(state->buffer_.userInput());
             ic->commitString(hiragana);
             rememberCommitted(state, hiragana);
@@ -251,27 +280,27 @@ private:
             return;
         }
 
-        // Escape -> cancel input
-        if (key.check(Key(FcitxKey_Escape)) && state->buffer_.size() > 0) {
+        // Forget the reading
+        if (is(key, Action::Cancel)) {
             resetState(ic, state);
             event.filterAndAccept();
             return;
         }
 
         // Cursor keys edit the reading before the conversion: one kana left or right, the ends, and the kana after the cursor
-        if (state->buffer_.size() > 0) {
+        {
             const std::string input = state->buffer_.userInput();
             const size_t cursor = state->buffer_.cursor();
             bool handled = true;
-            if (key.check(Key(FcitxKey_Left))) {
+            if (is(key, Action::CaretLeft)) {
                 state->buffer_.setCursor(movedByOneKana(input, cursor, -1));
-            } else if (key.check(Key(FcitxKey_Right))) {
+            } else if (is(key, Action::CaretRight)) {
                 state->buffer_.setCursor(movedByOneKana(input, cursor, +1));
-            } else if (key.check(Key(FcitxKey_Home))) {
+            } else if (is(key, Action::CaretFirst)) {
                 state->buffer_.setCursor(0);
-            } else if (key.check(Key(FcitxKey_End))) {
+            } else if (is(key, Action::CaretLast)) {
                 state->buffer_.setCursor(input.size());
-            } else if (key.check(Key(FcitxKey_Delete))) {
+            } else if (is(key, Action::Delete)) {
                 if (cursor < input.size()) {
                     state->buffer_.erase(cursor, movedByOneKana(input, cursor, +1));
                 }
@@ -285,8 +314,8 @@ private:
             }
         }
 
-        // Backspace
-        if (key.check(Key(FcitxKey_BackSpace)) && state->buffer_.size() > 0) {
+        // Delete the kana before the cursor
+        if (is(key, Action::Backspace)) {
             state->buffer_.backspace();
             updatePreedit(ic, state);
             event.filterAndAccept();
@@ -310,22 +339,30 @@ private:
         if (event.isRelease()) return;
         auto key = event.key();
 
-        // Ctrl+Enter -> LLM full-sentence re-conversion (must be before Enter)
-        if (key.check(Key(FcitxKey_Return, KeyState::Ctrl))) {
+        // The model's conversion of the whole reading
+        if (is(key, Action::ModelConvert)) {
             startLlmConversion(ic, state);
             event.filterAndAccept();
             return;
         }
 
-        // Enter -> commit conversion
-        if (key.check(Key(FcitxKey_Return))) {
+        // Commit the conversion
+        if (is(key, Action::Commit)) {
             commitConversion(ic, state);
             event.filterAndAccept();
             return;
         }
 
-        // Space -> next candidate, or switch to Mozc if LLM candidates exhausted
-        if (key.check(Key(FcitxKey_space))) {
+        // The active bunsetsu in another kind of characters (F6 to F10)
+        if (auto kind = kindAction(key)) {
+            applyKind(state, state->activeSegment_, *kind);
+            updateConversionDisplay(ic, state);
+            event.filterAndAccept();
+            return;
+        }
+
+        // Next candidate, or after the last one of the model's conversion the conversion in bunsetsu
+        if (is(key, Action::NextCandidate)) {
             auto &seg = state->segments_[state->activeSegment_];
             if (state->llmMode_) {
                 // In LLM mode: cycle through LLM candidates, then switch to Mozc
@@ -352,32 +389,38 @@ private:
             return;
         }
 
-        // Escape -> back to input mode
-        if (key.check(Key(FcitxKey_Escape))) {
+        // Back to the reading
+        if (is(key, Action::BackToReading)) {
             state->converting_ = false;
             updatePreedit(ic, state);
             event.filterAndAccept();
             return;
         }
 
-        // Shift+Right -> extend active segment (shrink next)
-        if (key.check(Key(FcitxKey_Right, KeyState::Shift))) {
+        // Make the active bunsetsu longer (the next one shorter)
+        if (is(key, Action::ExpandSegment)) {
             resizeSegment(ic, state, +1);
             event.filterAndAccept();
             return;
         }
 
-        // Shift+Left -> shrink active segment (extend next)
-        if (key.check(Key(FcitxKey_Left, KeyState::Shift))) {
+        // Make the active bunsetsu shorter (the next one longer)
+        if (is(key, Action::ShrinkSegment)) {
             resizeSegment(ic, state, -1);
             event.filterAndAccept();
             return;
         }
 
-        // Right arrow -> next segment
-        if (key.check(Key(FcitxKey_Right))) {
-            if (state->activeSegment_ < (int)state->segments_.size() - 1) {
-                state->activeSegment_++;
+        // Move to another bunsetsu
+        int last = (int)state->segments_.size() - 1;
+        int target = is(key, Action::NextSegment)    ? std::min(state->activeSegment_ + 1, last)
+                     : is(key, Action::PrevSegment)  ? std::max(state->activeSegment_ - 1, 0)
+                     : is(key, Action::FirstSegment) ? 0
+                     : is(key, Action::LastSegment)  ? last
+                                                     : -1;
+        if (target >= 0) {
+            if (target != state->activeSegment_) {
+                state->activeSegment_ = target;
                 updateConversionDisplay(ic, state);
                 prefetchCandidates(ic, state);
             }
@@ -385,30 +428,8 @@ private:
             return;
         }
 
-        // Left arrow -> previous segment
-        if (key.check(Key(FcitxKey_Left))) {
-            if (state->activeSegment_ > 0) {
-                state->activeSegment_--;
-                updateConversionDisplay(ic, state);
-                prefetchCandidates(ic, state);
-            }
-            event.filterAndAccept();
-            return;
-        }
-
-        // Down arrow -> next candidate for current segment
-        if (key.check(Key(FcitxKey_Down))) {
-            auto &seg = state->segments_[state->activeSegment_];
-            if (seg.selectedIndex < (int)seg.candidates.size() - 1) {
-                seg.selectedIndex++;
-            }
-            updateConversionDisplay(ic, state);
-            event.filterAndAccept();
-            return;
-        }
-
-        // Up arrow -> previous candidate
-        if (key.check(Key(FcitxKey_Up))) {
+        // Previous candidate
+        if (is(key, Action::PrevCandidate)) {
             auto &seg = state->segments_[state->activeSegment_];
             if (seg.selectedIndex > 0) {
                 seg.selectedIndex--;
@@ -855,7 +876,11 @@ private:
         try {
             std::vector<Choice> committed;
             for (auto &seg : state->segments_) {
-                committed.push_back({seg.reading, seg.candidates[seg.selectedIndex]});
+                const std::string &text = seg.candidates[seg.selectedIndex];
+                // Letters put in with F9 or F10 are not learned: the next time the reading should be converted
+                if (!onlyLetters(text)) {
+                    committed.push_back({seg.reading, text});
+                }
             }
             json corrections = json::array();
             for (auto &changed : changedChoices(state->offered_, committed)) {
@@ -1108,7 +1133,116 @@ private:
         ic->updateUserInterface(UserInterfaceComponent::InputPanel);
     }
 
+    static constexpr const char *kConfigFile = "conf/llm-ime.conf";
+
+    // The keys of every operation in the chosen profile
+    void applyKeys() {
+        keys_.assign(actionInfos().size(), KeyList());
+        for (size_t i = 0; i < actionInfos().size(); i++) {
+            const auto &info = actionInfos()[i];
+            keys_[static_cast<size_t>(info.action)] = *config_.profile == KeyProfile::Custom
+                                                          ? config_.customKeys->keys(i)
+                                                          : keyList(profileKeys(info, *config_.profile));
+        }
+    }
+
+    bool is(const Key &key, Action action) const {
+        size_t i = static_cast<size_t>(action);
+        return i < keys_.size() && key.checkKeyList(keys_[i]);
+    }
+
+    // Which of F6 to F10 (in the chosen profile) the key is
+    std::optional<Action> kindAction(const Key &key) const {
+        for (Action a : {Action::ToHiragana, Action::ToKatakana, Action::ToHalfKatakana, Action::ToWideLatin,
+                         Action::ToLatin}) {
+            if (is(key, a)) {
+                return a;
+            }
+        }
+        return std::nullopt;
+    }
+
+    // Text of ASCII or full-width ASCII only
+    static bool onlyLetters(const std::string &text) {
+        for (char32_t c : llmime::conversion::toU32(text)) {
+            if (!((c > 0x20 && c < 0x7F) || (c >= 0xFF01 && c <= 0xFF5E) || c == U' ' || c == 0x3000)) {
+                return false;
+            }
+        }
+        return !text.empty();
+    }
+
+    // The whole reading as one bunsetsu in another kind of characters, without asking the model: the conversion
+    // starts with that one candidate, and Space then gives the other candidates of the reading.
+    void startKindConversion(InputContext *ic, LlmImeState *state, Action kind) {
+        std::string hiragana = romajiToHiragana(state->buffer_.userInput());
+        state->fullHiragana_ = hiragana;
+        state->textBefore_ = textBeforeCursor(ic, state);
+        state->segments_.clear();
+        Segment s;
+        s.reading = hiragana;
+        s.candidates.push_back(hiragana);
+        state->segments_.push_back(std::move(s));
+        state->activeSegment_ = 0;
+        state->converting_ = true;
+        state->conversionId_++;
+        state->llmMode_ = false;
+        rememberOffered(state);
+        applyKind(state, 0, kind);
+        updateConversionDisplay(ic, state);
+        prefetchCandidates(ic, state);
+    }
+
+    // Puts the reading of bunsetsu `idx` in the kind of characters of `kind` among its candidates and selects it.
+    // Pressing F9 or F10 again changes the letters: lower case, upper case, the first letter in upper case.
+    void applyKind(LlmImeState *state, int idx, Action kind) {
+        if (idx < 0 || idx >= (int)state->segments_.size()) return;
+        auto &seg = state->segments_[idx];
+        const std::string shown = seg.candidates[seg.selectedIndex];
+        std::string text;
+        if (kind == Action::ToHiragana) {
+            text = seg.reading;
+        } else if (kind == Action::ToKatakana) {
+            text = hiraganaToKatakana(seg.reading);
+        } else if (kind == Action::ToHalfKatakana) {
+            text = toHalfKatakana(seg.reading);
+        } else {
+            // The letters as typed when the bunsetsu is the whole reading, else the kana written back in letters
+            std::string letters = state->segments_.size() == 1 && seg.reading == state->fullHiragana_ &&
+                                          state->buffer_.size() > 0
+                                      ? state->buffer_.userInput()
+                                      : kanaToRomaji(seg.reading);
+            std::string lower = letters;
+            for (char &c : lower) {
+                if (c >= 'A' && c <= 'Z') c += 32;
+            }
+            if (kind == Action::ToLatin) {
+                text = nextLatinForm(lower, shown);
+            } else {
+                // Which form of the letters is shown now, in full width
+                std::string shownLetters;
+                std::string form = lower;
+                do {
+                    if (toWideLatin(form) == shown) {
+                        shownLetters = form;
+                        break;
+                    }
+                    form = nextLatinForm(lower, form);
+                } while (form != lower);
+                text = toWideLatin(nextLatinForm(lower, shownLetters));
+            }
+        }
+        auto at = std::find(seg.candidates.begin(), seg.candidates.end(), text);
+        if (at == seg.candidates.end()) {
+            seg.candidates.push_back(text);
+            at = seg.candidates.end() - 1;
+        }
+        seg.selectedIndex = (int)(at - seg.candidates.begin());
+    }
+
     Instance *instance_;
+    SlmImeConfig config_;
+    std::vector<KeyList> keys_;
     llm_ime::LocalConversion conversion_;
     FactoryFor<LlmImeState> factory_;
     EventDispatcher dispatcher_;
