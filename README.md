@@ -81,7 +81,14 @@ The training set of 1.1.0 has 5,400,012 examples, from the Japanese Wikipedia an
 
 ## Speed
 
-One conversion takes 70 to 260 ms on the CPU alone of a mini PC, the ASUS MINIPC PN51-S1: AMD Ryzen 7 5700U (8 cores, 16 threads, 1.8 GHz base clock, up to 4.37 GHz), 32 GB of dual-channel DDR4-3200 memory, no GPU. This is fast enough for daily typing, and the wait is not noticeable in use. On an arm64 machine, the NVIDIA DGX Spark with 20 cores (10 Cortex-X925 and 10 Cortex-A725), one conversion takes 110 to 200 ms on the CPU alone. The package limits PyTorch to 8 threads there, because with a thread on each of the 20 cores one conversion takes about 0.85 s.
+The model is computed on the CPU alone. On a mini PC, the ASUS MINIPC PN51-S1 (AMD Ryzen 7 5700U, 8 cores, 16 threads,
+32 GB of DDR4-3200 memory, no GPU), one conversion by the model takes 58 ms on average, and a request of the engine
+(the conversion of a reading, or the candidates of one phrasal unit put in order by the model) takes 91 ms on average,
+86 ms in the middle and 247 ms at most, on 100 phrasal units of FineWeb-2 text. On an arm64 machine, the NVIDIA DGX
+Spark (20 cores), a request takes 67 ms on average, 62 ms in the middle and 236 ms at most. The package is built for
+plain x86-64 and arm64, without the instructions of a particular CPU, and the large products are shared among up to 4
+threads (`SLM_IME_THREADS`). Version 1, with a conversion server in Java and PyTorch, took 110 to 124 ms per request on
+the same mini PC. The wait is not noticeable in use.
 
 ## Integration of Anthy for the alternative kanji
 
