@@ -32,17 +32,19 @@ inference server (djl/, Java, DJL + TorchScript, CPU)
 conversion model (Transformer encoder-decoder, greedy decoding)
    | kanji-kana text with phrasal unit (bunsetsu) boundaries, e.g.  機械学習|の|アルゴリズム
    v
-reading of each phrasal unit (bunsetsu) is found by alignment; candidates = model output, then the choices
-the user made before for the same reading, then Anthy
+reading of each phrasal unit (bunsetsu) is found by alignment; candidates = the choice the user made before
+for the same reading, the model output, then Anthy's candidates in the order the model scores them
 ```
 
 - The model is trained on pairs of a reading and the kanji-kana text that a large LLM (Gemma 4) made
-  from sentences of the Japanese Wikipedia. The training rows imitate real typing: the reading starts
+  from sentences of the Japanese Wikipedia and of FineWeb-2 (Japanese web pages: blogs, shops, diaries). The training rows imitate real typing: the reading starts
   at a phrasal unit (bunsetsu) boundary inside a sentence, and the text before it is given as context
   (20 % of the rows have an empty context).
 - When the user changes a phrasal unit (bunsetsu), by picking another candidate or by moving a border, the pair
   (reading, chosen text) is kept in a history file and comes first the next time the same reading appears.
   The model is not changed by it.
+- When the application does not tell the text before the cursor, the engine sends the text the user committed
+  before in the same input field instead. Ctrl+Shift+Insert takes the last commit back into conversion.
 
 ## Accuracy
 
@@ -52,24 +54,27 @@ The character error rate is the edit distance between the output and the correct
 
 | System | Character error rate | Exact match |
 |---|---|---|
-| This program | 4.05 % | 75.5 % |
+| This program (1.1.0) | 3.90 % | 76.3 % |
+| This program (1.0.0) | 4.05 % | 75.5 % |
 | Mozc | 8.99 % | 56.5 % |
 | Anthy | 13.40 % | 47.1 % |
 
-The validation loss is the loss measured on sentences that were not used for training; the smaller, the better. It fell quickly and stopped falling at about the seventh epoch of the training. The character error rate was 4.13 % at epoch 7 and 4.05 % at epoch 8.
+On 5,000 stretches of FineWeb-2 sentences that were not used for training, everyday text of web pages, the character error rate is 4.89 % for 1.1.0 and 7.25 % for 1.0.0, which was trained on the Japanese Wikipedia only; the exact match is 74.3 % and 65.1 %.
 
-| Epoch | Validation loss |
-|---|---|
-| 1 | 0.2412 |
-| 2 | 0.1974 |
-| 3 | 0.1776 |
-| 4 | 0.1577 |
-| 5 | 0.1438 |
-| 6 | 0.1342 |
-| 7 | 0.1309 |
-| 8 | 0.1313 |
+The validation loss is the loss measured on sentences that were not used for training; the smaller, the better. The validation sentences of 1.1.0 include FineWeb-2 sentences, so its losses cannot be compared with those of 1.0.0 directly.
 
-The training was not optimized: the numbers above are those of the first training we ran. We will optimize it by revising the training set and the number of parameters. At present, the training set is the Japanese Wikipedia only, with 2,486,631 examples, and the model has about 60 million parameters. Even so, this program already converts more accurately than Mozc and Anthy. The correct texts were made by Gemma 4, a large language model that needs GPUs, and Gemma 4 does not convert perfectly either. The ideal for this program is the accuracy of Gemma 4, on a PC without a GPU.
+| Epoch | Validation loss (1.1.0) | Validation loss (1.0.0) |
+|---|---|---|
+| 1 | 0.1967 | 0.2412 |
+| 2 | 0.1635 | 0.1974 |
+| 3 | 0.1483 | 0.1776 |
+| 4 | 0.1337 | 0.1577 |
+| 5 | 0.1211 | 0.1438 |
+| 6 | 0.1119 | 0.1342 |
+| 7 | 0.1072 | 0.1309 |
+| 8 | 0.1067 | 0.1313 |
+
+The training set of 1.1.0 has 5,400,012 examples, from the Japanese Wikipedia and FineWeb-2, and the model has about 60 million parameters. The correct texts were made by Gemma 4, a large language model that needs GPUs, and Gemma 4 does not convert perfectly either. The ideal for this program is the accuracy of Gemma 4, on a PC without a GPU.
 
 ## Speed
 
@@ -85,7 +90,8 @@ reliably returns the alternative kanji. It is simple and robust, and it has done
 nothing to improve by replacing something that already does its job this well, so this program does not reimplement
 it; it relies on it. The SLM decides the phrasal units and gives the first candidate; Anthy supplies the other
 candidates that the user steps through with the Space key. The order of the candidates for a phrasal unit is: what the
-user chose before for the same reading, the SLM's answer, and then Anthy's candidates. Because Anthy has a dictionary,
+user chose before for the same reading, the SLM's answer, and then Anthy's candidates, which the SLM puts in order by
+how likely it finds each of them after the text before the phrasal unit. Because Anthy has a dictionary,
 it also reaches rare words, single kanji and proper nouns that a small model is weak at.
 
 ## Install with the Debian packages
@@ -139,19 +145,19 @@ extra candidates (optional). The commands for Ubuntu are in `engine/README.md`.
 ```bash
 mkdir -p ~/slm-ime
 cd djl
-rm -rf target && mvn install            # builds target/slm-ime-server-1.0.0-shaded.jar and runs the tests
-cp target/slm-ime-server-1.0.0-shaded.jar ~/slm-ime/
+rm -rf target && mvn install            # builds target/slm-ime-server-1.1.0-shaded.jar and runs the tests
+cp target/slm-ime-server-1.1.0-shaded.jar ~/slm-ime/
 ```
 
 ### Get the model
 
 The server reads a model directory, so the model is placed in `~/slm-ime/model` (not in the `model/` of this
-repository, which is the source of the Transformer). The release `v1.0.0` has the trained model; to make
+repository, which is the source of the Transformer). The release `v1.1.0` has the trained model; to make
 the model yourself, see "Train".
 
 ```bash
 cd ~/slm-ime
-base=https://github.com/oogasawa/fcitx5-slm-ime/releases/download/v1.0.0
+base=https://github.com/oogasawa/fcitx5-slm-ime/releases/download/v1.1.0
 curl -LO $base/fcitx5-slm-ime-model-torchscript-epoch8.zip    # about 700 MB
 curl -LO $base/SHA256SUMS
 sha256sum -c --ignore-missing SHA256SUMS
@@ -176,7 +182,7 @@ libraries to `~/.djl.ai`.
 cd ~/slm-ime
 java --enable-native-access=ALL-UNNAMED -Xmx2g \
      -Dmodel.context=true -Dmodel.dir=model -Dtokenizer=model/tokenizer.json \
-     -jar slm-ime-server-1.0.0-shaded.jar --server 8190
+     -jar slm-ime-server-1.1.0-shaded.jar --server 8190
 ```
 
 ## Options and requests of the conversion server
@@ -252,9 +258,9 @@ python3 -u train.py --data-dir DATA_DIR --run-name NAME --epochs 8 --batch-size 
 The options give the size of the Transformer (512 dimensions, 8 heads, 6 encoder layers, 6 decoder layers; about 60
 million parameters) and the longest input in characters. If `DATA_DIR` has no `tokenizer.json`, the script builds the
 character vocabulary from `train.tsv` and saves it there. The optimizer is AdamW with a one-cycle schedule of the
-learning rate (`--lr`, 3e-4 by default). After every epoch the script saves `checkpoints/NAME/last.pt`, and it saves
-`best.pt` when the loss on `valid.tsv` is the lowest so far. On a GPU, one epoch of 2.5 million rows takes about 95
-minutes on an RTX 4080.
+learning rate (`--lr`, 3e-4 by default). After every epoch the script saves `checkpoints/NAME/last.pt` and the weights of that
+epoch as `epoch_NN.pt`, and it saves `best.pt` when the loss on `valid.tsv` is the lowest so far. The forward pass
+runs in bfloat16 by default (`--amp bf16`). On an RTX 4080, one epoch of 5.4 million rows takes about 91 minutes.
 
 ### Export the model for the server
 

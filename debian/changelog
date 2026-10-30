@@ -1,8 +1,14 @@
-fcitx5-slm-ime (1.1.0~SNAPSHOT) unstable; urgency=low
+fcitx5-slm-ime (1.1.0) unstable; urgency=low
 
-  * Development version of 1.1.0.
+  * The model is trained on FineWeb-2 (Japanese web pages) besides the Japanese
+    Wikipedia: the character error rate on web text falls from 7.25 % to 4.89 %.
+  * The candidates from Anthy are put in order by the model, after the text before
+    the phrasal unit, and are fetched in the background.
+  * The last characters of a long conversion are no longer cut off.
+  * Without the text before the cursor from the application, the engine sends the
+    text committed before; Ctrl+Shift+Insert takes the last commit back.
 
- -- Osamu Ogasawara <osamu.ogasawara@gmail.com>  Thu, 29 Oct 2026 23:44:54 +0900
+ -- Osamu Ogasawara <osamu.ogasawara@gmail.com>  Fri, 30 Oct 2026 22:00:00 +0900
 
 fcitx5-slm-ime (1.0.0) unstable; urgency=low
 
