@@ -1,4 +1,4 @@
-#include "http-client.h"
+#include "local-conversion.h"
 #include "committed-text.h"
 #include "corrections.h"
 #include "romaji.h"
@@ -27,7 +27,7 @@ using namespace fcitx;
 using namespace llmime;
 using json = nlohmann::json;
 
-// Segment from the daemon's /api/segment-convert response
+// Segment from the /api/segment-convert answer
 struct Segment {
     std::string reading;
     std::vector<std::string> candidates;
@@ -35,10 +35,7 @@ struct Segment {
     bool llmFetched = false;
 };
 
-// The address of the conversion daemon
-constexpr const char *kDaemonUrl = "http://localhost:8190";
-
-// Takes the candidates of a bunsetsu from the daemon's /api/segment-candidates answer. The daemon puts them in the
+// Takes the candidates of a bunsetsu from the /api/segment-candidates answer. The conversion puts them in the
 // order the model gives them after the text before the bunsetsu, so its order is taken; the candidates it does not
 // have follow, and the selection stays on the same text.
 static void takeCandidates(Segment &seg, const nlohmann::json &resp) {
@@ -124,8 +121,6 @@ class LlmImeEngine : public InputMethodEngineV2 {
 public:
     LlmImeEngine(Instance *instance)
         : instance_(instance),
-          httpClient_(kDaemonUrl),
-          predictClient_(kDaemonUrl),
           factory_([this](InputContext &ic) {
               return new LlmImeState();
           }) {
@@ -504,7 +499,7 @@ private:
             }
 
             json req = {{"input", seg.reading}, {"context", context}, {"n", 5}};
-            json resp = httpClient_.post("/api/segment-candidates", req);
+            json resp = conversion_.post("/api/segment-candidates", req);
             takeCandidates(seg, resp);
         } catch (const std::exception &) {
             // LLM fetch failed; keep existing Mozc candidates
@@ -530,8 +525,7 @@ private:
         auto ref = ic->watch();
         std::thread([this, ref, idx, reading, context, id]() {
             try {
-                llm_ime::HttpClient client(kDaemonUrl);
-                json resp = client.post("/api/segment-candidates",
+                json resp = conversion_.post("/api/segment-candidates",
                                         {{"input", reading}, {"context", context}, {"n", 5}});
                 dispatcher_.schedule([this, ref, idx, reading, id, resp = std::move(resp)]() {
                     auto *ic = ref.get();
@@ -569,7 +563,7 @@ private:
             }
 
             json req = {{"input", seg.reading}, {"context", context}, {"n", 5}};
-            json resp = httpClient_.post("/api/segment-candidates", req);
+            json resp = conversion_.post("/api/segment-candidates", req);
 
             if (resp.contains("candidates")) {
                 seg.candidates.clear();
@@ -611,7 +605,7 @@ private:
             if (!context.empty()) {
                 req["context"] = context;
             }
-            json resp = httpClient_.post("/api/segment-convert", req);
+            json resp = conversion_.post("/api/segment-convert", req);
             if (!resp.contains("segments")) return;
 
             std::vector<Segment> fresh;
@@ -734,7 +728,7 @@ private:
             if (!context.empty()) {
                 req["context"] = context;
             }
-            json resp = httpClient_.post("/api/segment-convert", req);
+            json resp = conversion_.post("/api/segment-convert", req);
 
             state->segments_.clear();
             state->activeSegment_ = 0;
@@ -796,7 +790,7 @@ private:
             if (!context.empty()) {
                 req["context"] = context;
             }
-            json resp = httpClient_.post("/api/convert", req);
+            json resp = conversion_.post("/api/convert", req);
 
             state->segments_.clear();
             state->activeSegment_ = 0;
@@ -869,7 +863,7 @@ private:
             }
             if (!corrections.empty()) {
                 json req = {{"input", hiragana}, {"output", result}, {"corrections", corrections}};
-                httpClient_.post("/api/record", req);
+                conversion_.post("/api/record", req);
             }
         } catch (...) {
             // Ignore record failures
@@ -914,7 +908,7 @@ private:
         std::thread([this, ic, context]() {
             try {
                 json req = {{"context", context}, {"n", 5}};
-                json resp = predictClient_.post("/api/continue", req);
+                json resp = conversion_.post("/api/continue", req);
 
                 // Schedule UI update on main thread
                 dispatcher_.schedule(
@@ -1001,7 +995,7 @@ private:
                 panel.setPreedit(preedit);
             }
 
-            // Fetch predictions from predict daemon (non-blocking best-effort)
+            // Fetch predictions (none at present)
             if (utf8CharCount(hiragana) >= 5) {
                 fetchPredictions(ic, state, hiragana);
             }
@@ -1025,14 +1019,14 @@ private:
         return result;
     }
 
-    // Query predict daemon for prefix-matched candidates and show them
+    // Prefix-matched predictions, shown as candidates
     void fetchPredictions(InputContext *ic, LlmImeState * /*state*/,
                           const std::string &hiragana) {
         try {
             std::string query = "/api/predict?prefix=" + urlEncode(hiragana) +
                                 "&limit=5";
 
-            json resp = predictClient_.get(query);
+            json resp = conversion_.get(query);
             if (!resp.is_array() || resp.empty()) return;
 
             auto &panel = ic->inputPanel();
@@ -1050,7 +1044,7 @@ private:
                 panel.setCandidateList(std::move(candidateList));
             }
         } catch (const std::exception &) {
-            // Predict daemon unavailable — silently ignore
+            // No predictions
         }
     }
 
@@ -1115,8 +1109,7 @@ private:
     }
 
     Instance *instance_;
-    llm_ime::HttpClient httpClient_;
-    llm_ime::HttpClient predictClient_;
+    llm_ime::LocalConversion conversion_;
     FactoryFor<LlmImeState> factory_;
     EventDispatcher dispatcher_;
     std::vector<std::string> continuationCandidates_;  // current continuation candidates

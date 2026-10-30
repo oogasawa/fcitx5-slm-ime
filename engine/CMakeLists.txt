@@ -7,7 +7,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(PkgConfig REQUIRED)
 find_package(Fcitx5Core REQUIRED)
 find_package(Fcitx5Module REQUIRED COMPONENTS Notifications)
-find_package(CURL REQUIRED)
 find_package(nlohmann_json 3.2 REQUIRED)
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
@@ -43,14 +42,12 @@ set_target_properties(slm-ime-conversion PROPERTIES POSITION_INDEPENDENT_CODE ON
 
 add_library(llm-ime MODULE
     src/llm-ime-engine.cpp
-    src/http-client.cpp
+    src/local-conversion.cpp
 )
 
 target_link_libraries(llm-ime
     Fcitx5::Core
-    CURL::libcurl
-    nlohmann_json::nlohmann_json
-
+    slm-ime-conversion
 )
 
 target_include_directories(llm-ime PRIVATE
