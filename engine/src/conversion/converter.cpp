@@ -108,14 +108,17 @@ std::vector<int> Converter::sourceIds(const std::u32string &input, const std::u3
 }
 
 std::u32string Converter::translate(const std::u32string &input, const std::u32string &context) const {
-    auto memory = model_.encode(sourceIds(input, context));
+    return translate(*model_.encode(sourceIds(input, context)), input);
+}
+
+std::u32string Converter::translate(const model::Transformer::Memory &memory, const std::u32string &input) const {
     int readingLen = static_cast<int>(input.size()) + 1;
-    return tokenizer_.decode(model_.greedy(*memory, readingLen, barId_));
+    return tokenizer_.decode(model_.greedy(memory, readingLen, barId_));
 }
 
 std::vector<std::u32string> Converter::modelSegments(const std::u32string &input,
-                                                     const std::u32string &context) const {
-    std::u32string answer = covered(input, translate(input, context));
+                                                     const std::u32string &translated) const {
+    std::u32string answer = covered(input, translated);
     std::vector<std::u32string> segments;
     size_t start = 0;
     while (start <= answer.size()) {
@@ -136,8 +139,8 @@ std::vector<std::u32string> Converter::modelSegments(const std::u32string &input
 }
 
 std::vector<std::u32string> Converter::withAlternatives(const std::u32string &own, const std::u32string &original,
-                                                        const std::u32string &reading, const std::u32string *context,
-                                                        size_t wanted) {
+                                                        const std::u32string &reading,
+                                                        const model::Transformer::Memory *memory, size_t wanted) {
     std::vector<std::u32string> first;
     auto addFirst = [&first](const std::u32string &t) {
         if (std::find(first.begin(), first.end(), t) == first.end()) {
@@ -159,13 +162,12 @@ std::vector<std::u32string> Converter::withAlternatives(const std::u32string &ow
         }
     }
     std::vector<std::u32string> all = first;
-    if (others.empty() || context == nullptr) {
+    if (others.empty() || memory == nullptr) {
         all.insert(all.end(), others.begin(), others.end());
         return all;
     }
     // The model scores the first candidates of the dictionary after the text before the bunsetsu; the others stay
     // after them in the order of the dictionary.
-    auto memory = model_.encode(sourceIds(reading, *context));
     size_t count = std::min(others.size(), settings_.mostScored);
     std::vector<std::vector<int>> texts;
     for (size_t i = 0; i < count; i++) {
@@ -187,7 +189,7 @@ std::vector<std::u32string> Converter::withAlternatives(const std::u32string &ow
 
 std::vector<Converter::Segment> Converter::segmentConvert(const std::u32string &input, const std::u32string &context,
                                                           size_t wanted) {
-    Substituted answer = substituteHistory(input, modelSegments(input, context), history_);
+    Substituted answer = substituteHistory(input, modelSegments(input, translate(input, context)), history_);
     std::vector<Segment> segments;
     for (size_t i = 0; i < answer.texts.size(); i++) {
         segments.push_back({answer.readings[i], withAlternatives(answer.texts[i], answer.originals[i],
@@ -198,16 +200,18 @@ std::vector<Converter::Segment> Converter::segmentConvert(const std::u32string &
 
 std::vector<std::u32string> Converter::segmentCandidates(const std::u32string &input, const std::u32string &context,
                                                          size_t wanted, std::u32string *output) {
-    Substituted answer = substituteHistory(input, modelSegments(input, context), history_);
+    // One run of the encoder for the conversion and for the scores of the dictionary candidates.
+    auto memory = model_.encode(sourceIds(input, context));
+    Substituted answer = substituteHistory(input, modelSegments(input, translate(*memory, input)), history_);
     std::u32string own = joined(answer.texts);
     if (output != nullptr) {
         *output = own;
     }
-    return withAlternatives(own, joined(answer.originals), input, &context, wanted);
+    return withAlternatives(own, joined(answer.originals), input, memory.get(), wanted);
 }
 
 std::u32string Converter::convert(const std::u32string &input, const std::u32string &context) {
-    return joined(substituteHistory(input, modelSegments(input, context), history_).texts);
+    return joined(substituteHistory(input, modelSegments(input, translate(input, context)), history_).texts);
 }
 
 void Converter::record(const std::u32string &reading, const std::u32string &chosen) {

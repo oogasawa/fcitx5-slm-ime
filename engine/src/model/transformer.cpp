@@ -2,8 +2,14 @@
 
 #include <Eigen/Dense>
 
+#include <algorithm>
 #include <cmath>
+#include <condition_variable>
+#include <cstdlib>
+#include <functional>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 
 namespace llmime::model {
 
@@ -14,6 +20,117 @@ using ConstMat = Eigen::Map<const RowMat>;
 using ConstRow = Eigen::Map<const Eigen::RowVectorXf>;
 
 constexpr float kLayerNormEps = 1e-5f;
+
+// A few threads that share the columns of the large products. They sleep while there is nothing to do. The number is
+// SLM_IME_THREADS, or the number of processors up to 4: more threads only fight for the memory bandwidth (8 were
+// slower than 4 on a 16-core machine).
+class Pool {
+public:
+    static Pool &instance() {
+        static Pool pool;
+        return pool;
+    }
+
+    size_t size() const { return workers_.size() + 1; }
+
+    // Calls task(i) for i in [0, count), on the workers and on the calling thread, and returns when all are done.
+    void run(size_t count, const std::function<void(size_t)> &task) {
+        if (count <= 1 || workers_.empty()) {
+            for (size_t i = 0; i < count; i++) {
+                task(i);
+            }
+            return;
+        }
+        std::unique_lock<std::mutex> runLock(runMutex_);  // one product at a time
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            task_ = &task;
+            count_ = count;
+            next_ = 0;
+            pending_ = count;
+            generation_++;
+        }
+        wake_.notify_all();
+        work();
+        std::unique_lock<std::mutex> lock(mutex_);
+        done_.wait(lock, [this] { return pending_ == 0; });
+        task_ = nullptr;
+    }
+
+private:
+    Pool() {
+        size_t n = std::min<size_t>(4, std::max(1u, std::thread::hardware_concurrency()));
+        if (const char *env = std::getenv("SLM_IME_THREADS")) {
+            n = std::max(1, std::atoi(env));
+        }
+        for (size_t i = 1; i < n; i++) {
+            workers_.emplace_back([this] { loop(); });
+        }
+    }
+
+    // At the exit of the program: the workers are woken, told to stop and waited for.
+    ~Pool() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopping_ = true;
+        }
+        wake_.notify_all();
+        for (auto &w : workers_) {
+            w.join();
+        }
+    }
+
+    void loop() {
+        unsigned long seen = 0;
+        for (;;) {
+            {
+                std::unique_lock<std::mutex> lock(mutex_);
+                wake_.wait(lock, [&] { return stopping_ || generation_ != seen; });
+                if (stopping_) {
+                    return;
+                }
+                seen = generation_;
+            }
+            work();
+        }
+    }
+
+    // Takes the parts one by one until none is left.
+    void work() {
+        for (;;) {
+            size_t i;
+            const std::function<void(size_t)> *task;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (task_ == nullptr || next_ >= count_) {
+                    return;
+                }
+                i = next_++;
+                task = task_;
+            }
+            (*task)(i);
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (--pending_ == 0) {
+                done_.notify_one();
+            }
+        }
+    }
+
+    std::vector<std::thread> workers_;
+    std::mutex runMutex_;
+    std::mutex mutex_;
+    std::condition_variable wake_;
+    std::condition_variable done_;
+    const std::function<void(size_t)> *task_ = nullptr;
+    size_t count_ = 0;
+    size_t next_ = 0;
+    size_t pending_ = 0;
+    unsigned long generation_ = 0;
+    bool stopping_ = false;
+};
+
+// Products with fewer output columns than this are not shared out: the threads would cost more than they save.
+constexpr int kSmallestShared = 256;
 
 // nn.Linear: y = x W^T + b, W of (out, in).
 struct Linear {
@@ -35,8 +152,19 @@ struct Linear {
         : w(weight), b(bias), out(outRows), in(inCols) {}
 
     RowMat apply(const RowMat &x) const {
-        RowMat y = x * ConstMat(w, out, in).transpose();
-        y.rowwise() += ConstRow(b, out);
+        RowMat y(x.rows(), out);
+        Pool &pool = Pool::instance();
+        size_t parts = out < kSmallestShared ? 1 : std::min<size_t>(pool.size(), static_cast<size_t>(out) / 64);
+        int chunk = static_cast<int>((out + parts - 1) / parts);
+        pool.run(parts, [&](size_t p) {
+            int start = static_cast<int>(p) * chunk;
+            int n = std::min(chunk, out - start);
+            if (n <= 0) {
+                return;
+            }
+            y.middleCols(start, n).noalias() = x * ConstMat(w + static_cast<size_t>(start) * in, n, in).transpose();
+            y.middleCols(start, n).rowwise() += ConstRow(b + start, n);
+        });
         return y;
     }
 };

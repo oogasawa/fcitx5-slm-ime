@@ -58,10 +58,12 @@ public:
 
 private:
     std::vector<int> sourceIds(const std::u32string &input, const std::u32string &context) const;
-    std::vector<std::u32string> modelSegments(const std::u32string &input, const std::u32string &context) const;
+    std::u32string translate(const model::Transformer::Memory &memory, const std::u32string &input) const;
+    std::vector<std::u32string> modelSegments(const std::u32string &input, const std::u32string &translated) const;
+    // `memory`: the encoded reading and context, to score the dictionary candidates with; null: not scored.
     std::vector<std::u32string> withAlternatives(const std::u32string &own, const std::u32string &original,
-                                                 const std::u32string &reading, const std::u32string *context,
-                                                 size_t wanted);
+                                                 const std::u32string &reading,
+                                                 const model::Transformer::Memory *memory, size_t wanted);
 
     ConverterSettings settings_;
     Tokenizer tokenizer_;
