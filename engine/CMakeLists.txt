@@ -9,6 +9,7 @@ find_package(Fcitx5Core REQUIRED)
 find_package(Fcitx5Module REQUIRED COMPONENTS Notifications)
 find_package(CURL REQUIRED)
 find_package(nlohmann_json 3.2 REQUIRED)
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
 
 
 # fcitx5 addon install directory
@@ -17,6 +18,15 @@ include(GNUInstallDirs)
 set(FCITX_INSTALL_PKGDATADIR "${CMAKE_INSTALL_PREFIX}/share/fcitx5")
 set(FCITX_INSTALL_ADDONDIR "${FCITX_INSTALL_PKGDATADIR}/addon")
 set(FCITX_INSTALL_LIBDIR "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/fcitx5")
+
+# The conversion model, computed on the CPU with Eigen
+add_library(slm-ime-model STATIC
+    src/model/weights.cpp
+    src/model/transformer.cpp
+)
+target_include_directories(slm-ime-model PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(slm-ime-model PUBLIC Eigen3::Eigen nlohmann_json::nlohmann_json)
+set_target_properties(slm-ime-model PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 add_library(llm-ime MODULE
     src/llm-ime-engine.cpp
@@ -59,3 +69,9 @@ add_test(NAME corrections-test COMMAND corrections-test)
 add_executable(committed-text-test test/committed-text-test.cpp)
 target_include_directories(committed-text-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME committed-text-test COMMAND committed-text-test)
+
+# The model against the answers of PyTorch (needs SLM_IME_WEIGHTS and SLM_IME_GOLDEN; skipped without them)
+add_executable(model-check test/model-check.cpp)
+target_link_libraries(model-check PRIVATE slm-ime-model)
+add_test(NAME model-check COMMAND model-check)
+set_tests_properties(model-check PROPERTIES SKIP_RETURN_CODE 77)
