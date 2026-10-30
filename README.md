@@ -54,7 +54,7 @@ The character error rate is the edit distance between the output and the correct
 
 | System | Character error rate | Exact match |
 |---|---|---|
-| This program (1.1.0) | 3.90 % | 76.3 % |
+| This program (1.1.0, 1.2.0) | 3.90 % | 76.3 % |
 | This program (1.0.0) | 4.05 % | 75.5 % |
 | Mozc | 8.99 % | 56.5 % |
 | Anthy | 13.40 % | 47.1 % |
@@ -93,6 +93,38 @@ candidates that the user steps through with the Space key. The order of the cand
 user chose before for the same reading, the SLM's answer, and then Anthy's candidates, which the SLM puts in order by
 how likely it finds each of them after the text before the phrasal unit. Because Anthy has a dictionary,
 it also reaches rare words, single kanji and proper nouns that a small model is weak at.
+
+## Key bindings
+
+The keys are set in `fcitx5-configtool`: open the configuration of `SLM IME`. The key binding profile is one of
+`Default`, `MS-IME`, `ATOK` and `Custom`. The `MS-IME` and `ATOK` profiles follow the key binding styles of those
+input methods as the style files of fcitx5-anthy describe them, for the operations this program has. With `Custom`,
+the keys of every operation are the ones listed under "Keys of the Custom profile", which start as those of
+`Default` and can be changed one by one. The settings are kept in `~/.config/fcitx5/conf/llm-ime.conf`.
+
+| Operation | Default | MS-IME | ATOK |
+|---|---|---|---|
+| Convert | Space | Space, Shift+Space, Henkan | Space, Henkan |
+| Next / previous candidate | Space, Down / Up | Space, Tab, Henkan, Down / Up, Shift+Space | Space, Tab, Henkan / Up |
+| Next / previous phrasal unit | Right / Left | Right, Ctrl+D / Left, Ctrl+S | Shift+Right / Shift+Left |
+| Longer / shorter phrasal unit | Shift+Right / Shift+Left | Shift+Right, Ctrl+L / Shift+Left, Ctrl+E | Right, Ctrl+L / Left, Ctrl+K |
+| Back to the reading | Esc | Esc, BackSpace | Esc, BackSpace |
+| Hiragana, katakana, half-width katakana, full-width letters, letters | F6 to F10 | F6 to F10, Ctrl+U/I/O/P/T | F6 to F10, Ctrl+U/I/O/P/@ |
+| The model's conversion of the whole reading | Ctrl+Enter | Ctrl+Enter | Ctrl+Enter |
+| Take the last commit back | Ctrl+Shift+Insert | Ctrl+Shift+Insert | Ctrl+Shift+Insert |
+
+F9 and F10 pressed again change the letters: lower case, upper case, the first letter in upper case. Letters put in
+with F9 or F10 are not learned.
+
+## Security
+
+The conversion server listens on this machine only (`127.0.0.1:8190`), but other accounts on the machine and the web
+pages a browser shows can send requests there too. So the server answers only the user's own engine: at every start
+it writes a new random token to `~/.local/share/slm-ime/server-token`, which only the user can read, and refuses
+requests without it or addressed to another host name. The history of the user's choices
+(`~/.local/share/slm-ime/user_history.tsv`) is readable by the user only. In password fields and fields that the
+application marks as sensitive nothing is learned and the text is not kept. Version 1.1.0 and earlier had no token:
+upgrade, and restart fcitx5 (or log in again) after the upgrade, because an engine of 1.1.0 does not send the token.
 
 ## Install with the Debian packages
 
@@ -145,15 +177,15 @@ extra candidates (optional). The commands for Ubuntu are in `engine/README.md`.
 ```bash
 mkdir -p ~/slm-ime
 cd djl
-rm -rf target && mvn install            # builds target/slm-ime-server-1.1.0-shaded.jar and runs the tests
-cp target/slm-ime-server-1.1.0-shaded.jar ~/slm-ime/
+rm -rf target && mvn install            # builds target/slm-ime-server-1.2.0-shaded.jar and runs the tests
+cp target/slm-ime-server-1.2.0-shaded.jar ~/slm-ime/
 ```
 
 ### Get the model
 
 The server reads a model directory, so the model is placed in `~/slm-ime/model` (not in the `model/` of this
-repository, which is the source of the Transformer). The release `v1.1.0` has the trained model; to make
-the model yourself, see "Train".
+repository, which is the source of the Transformer). The release `v1.1.0` has the trained model, which 1.2.0 uses
+as it is; to make the model yourself, see "Train".
 
 ```bash
 cd ~/slm-ime
@@ -182,8 +214,11 @@ libraries to `~/.djl.ai`.
 cd ~/slm-ime
 java --enable-native-access=ALL-UNNAMED -Xmx2g \
      -Dmodel.context=true -Dmodel.dir=model -Dtokenizer=model/tokenizer.json \
-     -jar slm-ime-server-1.1.0-shaded.jar --server 8190
+     -jar slm-ime-server-1.2.0-shaded.jar --server 8190
 ```
+
+At every start the server writes a new token to `$XDG_DATA_HOME/slm-ime/server-token` (by default
+`~/.local/share/slm-ime/server-token`), where the engine reads it; see "Security".
 
 ## Options and requests of the conversion server
 
@@ -196,8 +231,10 @@ The options are Java system properties (`-D…`). With the Debian packages, put 
 | `-Dmodel.context=true` | the model was trained with the text before the cursor (use `false` for a model trained without it) |
 | `-Dmodel.contextChars=48` | how many characters before the cursor are given to the model |
 | `-Dhistory.file=PATH` | file of the candidates the user chose (default `user_history.tsv`; empty = memory only) |
+| `-Dtoken.file=PATH` | file of the token the engine must send (default `$XDG_DATA_HOME/slm-ime/server-token`, where the engine reads it) |
 | `-Dlog.context=true` | log the reading and the text before the cursor of each request |
 
+Every request but `GET /api/health` must carry the token in the header `X-SLM-IME-Token`.
 Requests answered (the ones the fcitx5 engine sends): `POST /api/segment-convert`,
 `POST /api/segment-candidates`, `POST /api/convert`, `POST /api/record`; `GET /api/predict` and
 `POST /api/continue` are answered with empty results.

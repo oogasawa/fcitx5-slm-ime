@@ -1,3 +1,22 @@
+fcitx5-slm-ime (1.2.0) unstable; urgency=medium
+
+  * Security: only the user's own engine may use the conversion server. The
+    server writes a new random token at every start to
+    $XDG_DATA_HOME/slm-ime/server-token (mode 0600) and refuses requests without
+    it, so that other accounts on the machine and web pages in a browser can no
+    longer read conversions or write into the history. Restart fcitx5 (or log in
+    again) after the upgrade: an engine of 1.1.0 does not send the token.
+  * Security: the history is readable by the user only (0600, directory 0700);
+    nothing is learned or kept in password and sensitive fields; the take-back
+    (Ctrl+Shift+Insert) is forgotten when the focus moves or the cursor is moved
+    after a commit.
+  * Key bindings: a key binding profile (Default, MS-IME, ATOK) and the keys of
+    every operation for the Custom profile, in fcitx5-configtool.
+  * F6 to F10 put the active phrasal unit (the whole reading while typing) in
+    hiragana, katakana, half-width katakana, full-width letters and letters.
+
+ -- Osamu Ogasawara <osamu.ogasawara@gmail.com>  Sat, 31 Oct 2026 12:00:00 +0900
+
 fcitx5-slm-ime (1.1.0) unstable; urgency=low
 
   * The model is trained on FineWeb-2 (Japanese web pages) besides the Japanese
