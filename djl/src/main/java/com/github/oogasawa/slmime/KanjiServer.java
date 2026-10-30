@@ -61,9 +61,14 @@ public class KanjiServer {
     /** How many candidates of a bunsetsu from Anthy the model puts in order ({@code -Dcandidates.scored=N});
      *  the others follow them in Anthy's order, and 0 leaves all in Anthy's order. */
     private static final int MOST_SCORED = Integer.getInteger("candidates.scored", 20);
+    /** How much Anthy's order counts against the scores of the model ({@code -Dcandidates.sourceWeight=W}). With 3,
+     *  the right text of the bunsetsu the model got wrong came higher than with the scores alone or Anthy's order
+     *  alone, in both the Wikipedia and the FineWeb test rows (386 bunsetsu); with the scores alone it came lower on
+     *  FineWeb, where the model gave the kana spellings too much. */
+    private static final double SOURCE_WEIGHT = Double.parseDouble(System.getProperty("candidates.sourceWeight", "3"));
     /** The requests of the fcitx5 engine, answered with this model. */
     private final ImeApi ime = new ImeApi(this::translate, AnthyCandidates.loadOrNone(), openHistory(),
-            MOST_SCORED > 0 ? this::scores : ImeApi.Scorer.NONE);
+            MOST_SCORED > 0 ? this::scores : ImeApi.Scorer.NONE, SOURCE_WEIGHT);
 
     /** The candidates the user chose: {@code -Dhistory.file=PATH} (default {@code user_history.tsv} in the
      *  working directory); an empty value keeps the history in memory only. */

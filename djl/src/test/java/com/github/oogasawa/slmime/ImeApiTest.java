@@ -84,6 +84,19 @@ class ImeApiTest {
     }
 
     @Test
+    void theOrderOfTheDictionaryCountsAgainstTheScoresWithItsWeight() {
+        // 転機が scores a little higher than 量が, but comes far later in the order of the dictionary
+        ImeApi.Scorer scorer = (reading, context, texts) ->
+                texts.stream().mapToDouble(t -> t.equals("転機が") ? -1.0 : -2.0).toArray();
+        CandidateSource source = (reading, limit) -> List.of("量が", "良が", "両が", "寮が", "転機が");
+        ImeApi weighted = new ImeApi((kana, context) -> "りょうが", source, UserHistory.inMemory(), scorer, 3);
+        ImeApi scoresOnly = new ImeApi((kana, context) -> "りょうが", source, UserHistory.inMemory(), scorer, 0);
+        String body = "{\"input\":\"りょうが\"}";
+        assertEquals("量が", parse(call(() -> weighted.segmentCandidates(body))).getAsJsonArray("candidates").get(1).getAsString());
+        assertEquals("転機が", parse(call(() -> scoresOnly.segmentCandidates(body))).getAsJsonArray("candidates").get(1).getAsString());
+    }
+
+    @Test
     void withoutAScorerTheDictionaryCandidatesKeepTheirOrder() {
         ImeApi unscored = new ImeApi((kana, context) -> "天気が",
                 (reading, limit) -> List.of("天気が", "転記が", "転機が"));

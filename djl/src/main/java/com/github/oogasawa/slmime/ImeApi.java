@@ -51,6 +51,8 @@ public final class ImeApi {
     private final CandidateSource alternatives;
     private final UserHistory history;
     private final Scorer scorer;
+    /** How much the order of the source of the other candidates counts against the scores of the model. */
+    private final double sourceWeight;
 
     /**
      * @param converter the model
@@ -70,10 +72,21 @@ public final class ImeApi {
     }
 
     public ImeApi(Converter converter, CandidateSource alternatives, UserHistory history, Scorer scorer) {
+        this(converter, alternatives, history, scorer, 0);
+    }
+
+    /**
+     * @param sourceWeight the other candidates are put in the order of {@code score - sourceWeight * ln(1 + i)},
+     *                     where {@code i} is the place of the candidate in the order of its source (Anthy, which
+     *                     puts the words it finds more often first) and {@code score} is what the model gives it
+     */
+    public ImeApi(Converter converter, CandidateSource alternatives, UserHistory history, Scorer scorer,
+                  double sourceWeight) {
         this.converter = converter;
         this.alternatives = alternatives;
         this.history = history;
         this.scorer = scorer;
+        this.sourceWeight = sourceWeight;
     }
 
     /** {@code {"input":..,"context":..}} to {@code {"segments":[{"reading":..,"candidates":[..]},..]}}. */
@@ -108,6 +121,17 @@ public final class ImeApi {
         response.add("candidates", strings(withAlternatives(own, String.join("", answer.originals()), input,
                 context, wanted(request))));
         response.addProperty("output", own);
+        if (request.has("debug") && request.get("debug").getAsBoolean()) {
+            // for measuring the order: the other candidates in the order of their source, with the scores of the model
+            List<String> others = new ArrayList<>(alternatives.candidates(input, wanted(request)));
+            double[] scores = others.isEmpty() ? new double[0] : scorer.scores(input, context, others);
+            response.add("sourceOrder", strings(others));
+            JsonArray array = new JsonArray();
+            for (double score : scores == null ? new double[0] : scores) {
+                array.add(Double.isInfinite(score) ? -1e9 : score);
+            }
+            response.add("scores", array);
+        }
         return response.toString();
     }
 
@@ -190,7 +214,8 @@ public final class ImeApi {
             for (int i = 0; i < others.size(); i++) {
                 order.add(i);
             }
-            order.sort(Comparator.comparingDouble((Integer i) -> -scores[i]));  // stable: equal scores keep their order
+            // stable: equal values keep their order
+            order.sort(Comparator.comparingDouble((Integer i) -> -(scores[i] - sourceWeight * Math.log1p(i))));
             order.forEach(i -> all.add(others.get(i)));
         }
         return all;
