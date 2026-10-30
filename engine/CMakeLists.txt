@@ -54,11 +54,18 @@ target_link_libraries(llm-ime
 target_include_directories(llm-ime PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
+# The labels of the configuration are English; po/ has their translations
+target_compile_definitions(llm-ime PRIVATE FCITX_GETTEXT_DOMAIN="fcitx5-slm-ime"
+                                           FCITX_INSTALL_LOCALEDIR="${CMAKE_INSTALL_FULL_LOCALEDIR}")
 
 set_target_properties(llm-ime PROPERTIES
     PREFIX ""
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
 )
+
+# Translations
+find_package(Gettext REQUIRED)
+add_subdirectory(po)
 
 # Install
 install(TARGETS llm-ime DESTINATION "${FCITX_INSTALL_LIBDIR}")
