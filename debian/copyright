@@ -10,7 +10,8 @@ Files: usr/share/slm-ime/model/*
 Copyright: 2026 Osamu Ogasawara
 License: CC-BY-SA-4.0
 Comment: The trained weights. They are trained on text of the Japanese Wikipedia
- (CC BY-SA 4.0).
+ (CC BY-SA 4.0) and of the Japanese part of FineWeb-2 (ODC-By 1.0), with readings
+ written by a language model.
 
 License: Apache-2.0
  On Debian systems the full text is in /usr/share/common-licenses/Apache-2.0.
