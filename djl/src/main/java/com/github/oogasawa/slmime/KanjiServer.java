@@ -38,6 +38,7 @@ public class KanjiServer {
 
     private static final int BOS_ID = 1;
     private static final int EOS_ID = 2;
+    private static final int PAD_ID = 0;
     /** Stop when the EOS score comes within this distance of the best score; 0 (the default) turns the rule off.
      *  The rule was made for an older model and ends the output of the current model too early. */
     private static final float EOS_PROX = Float.parseFloat(System.getProperty("stop.eosProx", "0"));
@@ -57,8 +58,12 @@ public class KanjiServer {
     private final Predictor<NDList, NDList> step;
     private final NDManager manager;
     private final BunsetsuSegmenter segmenter = new BunsetsuSegmenter();
+    /** How many candidates of a bunsetsu from Anthy the model puts in order ({@code -Dcandidates.scored=N});
+     *  the others follow them in Anthy's order, and 0 leaves all in Anthy's order. */
+    private static final int MOST_SCORED = Integer.getInteger("candidates.scored", 20);
     /** The requests of the fcitx5 engine, answered with this model. */
-    private final ImeApi ime = new ImeApi(this::translate, AnthyCandidates.loadOrNone(), openHistory());
+    private final ImeApi ime = new ImeApi(this::translate, AnthyCandidates.loadOrNone(), openHistory(),
+            MOST_SCORED > 0 ? this::scores : ImeApi.Scorer.NONE);
 
     /** The candidates the user chose: {@code -Dhistory.file=PATH} (default {@code user_history.tsv} in the
      *  working directory); an empty value keeps the history in memory only. */
@@ -241,6 +246,78 @@ public class KanjiServer {
         }
     }
 
+    /**
+     * The log probability that the model writes each text, and nothing more, for the reading after the text before
+     * the cursor. The first {@link #MOST_SCORED} texts are scored; the others get negative infinity, so that they
+     * stay after the scored ones in their order.
+     */
+    private double[] scores(String reading, String context, List<String> texts) throws Exception {
+        double[] result = new double[texts.size()];
+        java.util.Arrays.fill(result, Double.NEGATIVE_INFINITY);
+        int count = Math.min(texts.size(), MOST_SCORED);
+        List<List<Integer>> ids = new ArrayList<>();
+        int longest = 0;
+        for (int t = 0; t < count; t++) {
+            ids.add(tokenizer.encodeChars(texts.get(t)));
+            longest = Math.max(longest, ids.get(t).size());
+        }
+        // All the texts go through the decoder at once: BOS, the text, then padding to the longest text.
+        int tgtLen = longest + 1;
+        long[] tgtArr = new long[count * tgtLen];
+        boolean[] tgtPadArr = new boolean[count * tgtLen];
+        for (int t = 0; t < count; t++) {
+            tgtArr[t * tgtLen] = BOS_ID;
+            for (int i = 0; i < longest; i++) {
+                boolean inText = i < ids.get(t).size();
+                tgtArr[t * tgtLen + i + 1] = inText ? ids.get(t).get(i) : PAD_ID;
+                tgtPadArr[t * tgtLen + i + 1] = !inText;
+            }
+        }
+        List<Integer> srcIds = SourceIds.of(tokenizer, context, reading, USE_CONTEXT, CONTEXT_CHARS);
+        int srcLen = srcIds.size();
+        try (NDManager sub = manager.newSubManager()) {
+            NDArray src = sub.create(srcIds.stream().mapToLong(Integer::longValue).toArray(), new Shape(1, srcLen));
+            NDArray memory = encoder.predict(new NDList(src, sub.zeros(new Shape(1, srcLen), DataType.BOOLEAN))).get(0);
+            boolean[] maskData = new boolean[tgtLen * tgtLen];
+            for (int i = 0; i < tgtLen; i++)
+                for (int j = i + 1; j < tgtLen; j++)
+                    maskData[i * tgtLen + j] = true;
+            NDList out = decoder.predict(new NDList(
+                    sub.create(tgtArr, new Shape(count, tgtLen)),
+                    memory.repeat(0, count),
+                    sub.create(maskData, new Shape(tgtLen, tgtLen)),
+                    sub.create(tgtPadArr, new Shape(count, tgtLen)),
+                    sub.zeros(new Shape(count, srcLen), DataType.BOOLEAN)));
+            // (texts, positions, vocabulary), read out at once: one read per element is slow
+            float[] logProbs = out.get(0).logSoftmax(2).toFloatArray();
+            int vocab = tokenizer.vocabSize();
+            for (int t = 0; t < count; t++) {
+                List<Integer> text = ids.get(t);
+                int base = t * tgtLen * vocab;
+                double sum = logProbs[base + text.size() * vocab + EOS_ID];
+                for (int i = 0; i < text.size(); i++) {
+                    sum += logProbs[base + i * vocab + text.get(i)];
+                }
+                result[t] = sum;
+            }
+        }
+        return result;
+    }
+
+    /** The scores of the next token at every position of the prefix (it starts with BOS): (positions, vocabulary). */
+    private NDArray decodeAll(NDManager sub, NDArray memory, int srcLen, long[] prefix) throws TranslateException {
+        int tgtLen = prefix.length;
+        NDArray tgt = sub.create(prefix, new Shape(1, tgtLen));
+        boolean[] maskData = new boolean[tgtLen * tgtLen];
+        for (int i = 0; i < tgtLen; i++)
+            for (int j = i + 1; j < tgtLen; j++)
+                maskData[i * tgtLen + j] = true;
+        NDArray tgtMask = sub.create(maskData, new Shape(tgtLen, tgtLen));
+        NDArray tgtPad = sub.zeros(new Shape(1, tgtLen), DataType.BOOLEAN);
+        NDArray memPad = sub.zeros(new Shape(1, srcLen), DataType.BOOLEAN);
+        return decoder.predict(new NDList(tgt, memory, tgtMask, tgtPad, memPad)).get(0).squeeze(0);
+    }
+
     /** The scores of the next token, given the output so far (it starts with BOS). */
     private interface Stepper {
         NDArray logitsOfLast(List<Long> prefix) throws TranslateException;
@@ -260,20 +337,8 @@ public class KanjiServer {
 
         @Override
         public NDArray logitsOfLast(List<Long> prefix) throws TranslateException {
-            int tgtLen = prefix.size();
-            long[] tgtArr = prefix.stream().mapToLong(Long::longValue).toArray();
-            NDArray tgt = sub.create(tgtArr, new Shape(1, tgtLen));
-
-            boolean[] maskData = new boolean[tgtLen * tgtLen];
-            for (int i = 0; i < tgtLen; i++)
-                for (int j = i + 1; j < tgtLen; j++)
-                    maskData[i * tgtLen + j] = true;
-            NDArray tgtMask = sub.create(maskData, new Shape(tgtLen, tgtLen));
-            NDArray tgtPad = sub.zeros(new Shape(1, tgtLen), DataType.BOOLEAN);
-            NDArray memPad = sub.zeros(new Shape(1, srcLen), DataType.BOOLEAN);
-
-            NDList decOut = decoder.predict(new NDList(tgt, memory, tgtMask, tgtPad, memPad));
-            return decOut.get(0).squeeze(0).get(tgtLen - 1);
+            return decodeAll(sub, memory, srcLen, prefix.stream().mapToLong(Long::longValue).toArray())
+                    .get(prefix.size() - 1);
         }
     }
 

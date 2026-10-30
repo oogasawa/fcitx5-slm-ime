@@ -60,6 +60,38 @@ class ImeApiTest {
                 response.getAsJsonArray("candidates").asList().stream().map(e -> e.getAsString()).toList());
     }
 
+    @Test
+    void theDictionaryCandidatesOfOneBunsetsuAreOrderedByTheScoresOfTheModelAfterTheTextBeforeIt() {
+        List<String> contexts = new java.util.ArrayList<>();
+        ImeApi scored = new ImeApi((kana, context) -> "天気が",
+                (reading, limit) -> List.of("天気が", "転記が", "転機が", "てんきが"),
+                UserHistory.inMemory(),
+                (reading, context, texts) -> {
+                    contexts.add(context);
+                    return texts.stream().mapToDouble(t -> t.equals("転機が") ? 0 : t.equals("てんきが") ? -1 : -5).toArray();
+                });
+        JsonObject response = parse(call(() -> scored.segmentCandidates(
+                "{\"input\":\"てんきが\",\"context\":\"昨日は雨。今日は\"}")));
+        // the model's own text stays first; the others follow their scores
+        assertEquals(List.of("天気が", "転機が", "てんきが", "転記が"),
+                response.getAsJsonArray("candidates").asList().stream().map(e -> e.getAsString()).toList());
+        assertEquals(List.of("昨日は雨。今日は"), contexts);
+
+        // the conversion of a whole text does not score: each bunsetsu would cost a run of the model
+        contexts.clear();
+        call(() -> scored.segmentConvert("{\"input\":\"てんきが\",\"context\":\"昨日は雨。\"}"));
+        assertEquals(List.of(), contexts);
+    }
+
+    @Test
+    void withoutAScorerTheDictionaryCandidatesKeepTheirOrder() {
+        ImeApi unscored = new ImeApi((kana, context) -> "天気が",
+                (reading, limit) -> List.of("天気が", "転記が", "転機が"));
+        JsonObject response = parse(call(() -> unscored.segmentCandidates("{\"input\":\"てんきが\"}")));
+        assertEquals(List.of("天気が", "転記が", "転機が"),
+                response.getAsJsonArray("candidates").asList().stream().map(e -> e.getAsString()).toList());
+    }
+
     private static List<String> candidatesOf(JsonObject segment) {
         return segment.getAsJsonArray("candidates").asList().stream().map(e -> e.getAsString()).toList();
     }

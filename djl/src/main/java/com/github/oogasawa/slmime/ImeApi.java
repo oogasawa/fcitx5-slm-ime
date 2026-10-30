@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -31,12 +32,25 @@ public final class ImeApi {
         String convert(String kana, String context) throws Exception;
     }
 
+    /**
+     * Scores texts of one reading with the model, given the text before it: the higher, the likelier the model
+     * finds the text in that place. {@link #NONE} scores nothing, and the candidates keep the order of their source.
+     */
+    @FunctionalInterface
+    public interface Scorer {
+        /** One score per text, or {@code null} when the texts are not scored. */
+        double[] scores(String reading, String context, List<String> texts) throws Exception;
+
+        Scorer NONE = (reading, context, texts) -> null;
+    }
+
     /** The user can pick among at least this many candidates for a bunsetsu, whatever the engine asked for. */
     private static final int AT_LEAST_CANDIDATES = 50;
 
     private final Converter converter;
     private final CandidateSource alternatives;
     private final UserHistory history;
+    private final Scorer scorer;
 
     /**
      * @param converter the model
@@ -52,23 +66,29 @@ public final class ImeApi {
      * @param history the candidates the user chose before, which come before the model's own
      */
     public ImeApi(Converter converter, CandidateSource alternatives, UserHistory history) {
+        this(converter, alternatives, history, Scorer.NONE);
+    }
+
+    public ImeApi(Converter converter, CandidateSource alternatives, UserHistory history, Scorer scorer) {
         this.converter = converter;
         this.alternatives = alternatives;
         this.history = history;
+        this.scorer = scorer;
     }
 
     /** {@code {"input":..,"context":..}} to {@code {"segments":[{"reading":..,"candidates":[..]},..]}}. */
     public String segmentConvert(String body) throws Exception {
         JsonObject request = JsonParser.parseString(body).getAsJsonObject();
         String input = text(request, "input");
+        String context = text(request, "context");
         HistorySubstitution.Result answer = HistorySubstitution.apply(input,
-                segmentsOf(input, covered(input, converter.convert(input, text(request, "context")))), history);
+                segmentsOf(input, covered(input, converter.convert(input, context))), history);
         JsonArray array = new JsonArray();
         for (int i = 0; i < answer.texts().size(); i++) {
             JsonObject segment = new JsonObject();
             segment.addProperty("reading", answer.readings().get(i));
             segment.add("candidates", strings(withAlternatives(answer.texts().get(i), answer.originals().get(i),
-                    answer.readings().get(i), wanted(request))));
+                    answer.readings().get(i), null, wanted(request))));
             array.add(segment);
         }
         JsonObject response = new JsonObject();
@@ -80,12 +100,13 @@ public final class ImeApi {
     public String segmentCandidates(String body) throws Exception {
         JsonObject request = JsonParser.parseString(body).getAsJsonObject();
         String input = text(request, "input");
+        String context = text(request, "context");
         HistorySubstitution.Result answer = HistorySubstitution.apply(input,
-                segmentsOf(input, covered(input, converter.convert(input, text(request, "context")))), history);
+                segmentsOf(input, covered(input, converter.convert(input, context))), history);
         String own = String.join("", answer.texts());
         JsonObject response = new JsonObject();
         response.add("candidates", strings(withAlternatives(own, String.join("", answer.originals()), input,
-                wanted(request))));
+                context, wanted(request))));
         response.addProperty("output", own);
         return response.toString();
     }
@@ -141,13 +162,38 @@ public final class ImeApi {
     /** What the user chose before for the whole reading first, then the model's answer with the user's earlier
      *  choices put in, then the model's answer as it was, then the alternatives from the dictionary, without
      *  duplicates. */
-    private List<String> withAlternatives(String own, String original, String reading, int wanted) {
-        Set<String> all = new LinkedHashSet<>();
-        history.preferred(reading).ifPresent(all::add);
-        all.add(own);
-        all.add(original);
-        all.addAll(alternatives.candidates(reading, wanted));
-        return new ArrayList<>(all);
+    /**
+     * The candidates of one bunsetsu: what the user chose before for the reading, the text of the model, and the
+     * other candidates, put in the order of the scores the model gives them after the text before the bunsetsu
+     * ({@code context}). With a null context the others keep the order of their source: the conversion of a
+     * whole text does not score them, since every bunsetsu would cost a run of the model, and the engine asks for
+     * the candidates of one bunsetsu ({@link #segmentCandidates}) when the user starts to choose among them.
+     */
+    private List<String> withAlternatives(String own, String original, String reading, String context, int wanted)
+            throws Exception {
+        Set<String> first = new LinkedHashSet<>();
+        history.preferred(reading).ifPresent(first::add);
+        first.add(own);
+        first.add(original);
+        List<String> others = new ArrayList<>();
+        for (String candidate : alternatives.candidates(reading, wanted)) {
+            if (!first.contains(candidate) && !others.contains(candidate)) {
+                others.add(candidate);
+            }
+        }
+        double[] scores = others.isEmpty() || context == null ? null : scorer.scores(reading, context, others);
+        List<String> all = new ArrayList<>(first);
+        if (scores == null) {
+            all.addAll(others);
+        } else {
+            List<Integer> order = new ArrayList<>();
+            for (int i = 0; i < others.size(); i++) {
+                order.add(i);
+            }
+            order.sort(Comparator.comparingDouble((Integer i) -> -scores[i]));  // stable: equal scores keep their order
+            order.forEach(i -> all.add(others.get(i)));
+        }
+        return all;
     }
 
     /** The model's answer is checked against the reading only if it cannot be explained better than this. */

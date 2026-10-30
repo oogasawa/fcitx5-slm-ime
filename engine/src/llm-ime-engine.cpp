@@ -14,6 +14,7 @@
 #include <fcitx-utils/eventdispatcher.h>
 #include <fcitx-utils/inputbuffer.h>
 #include <fcitx-utils/key.h>
+#include <algorithm>
 #include <memory>
 #include <set>
 #include <string>
@@ -473,15 +474,25 @@ private:
             json resp = httpClient_.post("/api/segment-candidates", req);
 
             if (resp.contains("candidates")) {
-                std::set<std::string> existing(seg.candidates.begin(),
-                                                seg.candidates.end());
+                // The daemon puts the candidates in the order the model gives them after the text before the
+                // bunsetsu, so its order is taken; the candidates it does not have follow, and the selection stays.
+                std::string selected = seg.candidates.empty() ? "" : seg.candidates[seg.selectedIndex];
+                std::vector<std::string> ordered;
+                std::set<std::string> seen;
                 for (auto &c : resp["candidates"]) {
                     std::string val = c.get<std::string>();
-                    if (existing.find(val) == existing.end()) {
-                        seg.candidates.push_back(val);
-                        existing.insert(val);
+                    if (seen.insert(val).second) {
+                        ordered.push_back(val);
                     }
                 }
+                for (auto &val : seg.candidates) {
+                    if (seen.insert(val).second) {
+                        ordered.push_back(val);
+                    }
+                }
+                seg.candidates = ordered;
+                auto at = std::find(seg.candidates.begin(), seg.candidates.end(), selected);
+                seg.selectedIndex = at == seg.candidates.end() ? 0 : (int)(at - seg.candidates.begin());
             }
         } catch (const std::exception &) {
             // LLM fetch failed; keep existing Mozc candidates
