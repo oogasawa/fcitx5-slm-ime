@@ -99,6 +99,12 @@ target_include_directories(key-actions-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/
 target_link_libraries(key-actions-test PRIVATE Fcitx5::Utils)
 add_test(NAME key-actions-test COMMAND key-actions-test)
 
+# The conversion without the model: readings, history, substitution, the ends put back, Anthy (the tests of the
+# Java conversion server of version 1)
+add_executable(conversion-test test/conversion-test.cpp)
+target_link_libraries(conversion-test PRIVATE slm-ime-conversion)
+add_test(NAME conversion-test COMMAND conversion-test)
+
 # A damaged weights file is refused, never read past its end (a tiny model is written by the test)
 add_executable(weights-test test/weights-test.cpp)
 target_link_libraries(weights-test PRIVATE slm-ime-model)
