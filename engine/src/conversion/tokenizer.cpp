@@ -9,6 +9,11 @@
 
 namespace llmime::conversion {
 
+namespace {
+// No vocabulary is larger than this; a larger id in the file is damage (and would take gigabytes of memory).
+constexpr int kLargestId = 1 << 24;
+} // namespace
+
 Tokenizer::Tokenizer(const std::string &path) {
     std::ifstream in(path);
     if (!in) {
@@ -19,6 +24,9 @@ Tokenizer::Tokenizer(const std::string &path) {
         int id = value.get<int>();
         if (id < 0) {
             continue;
+        }
+        if (id >= kLargestId) {
+            throw std::runtime_error("the tokenizer has an id out of range: " + path);
         }
         if (static_cast<size_t>(id) >= idToChar_.size()) {
             idToChar_.resize(static_cast<size_t>(id) + 1, 0);

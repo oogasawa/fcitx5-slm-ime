@@ -140,13 +140,11 @@ struct Linear {
     int in = 0;
 
     Linear() = default;
-    Linear(const Weights &weights, const std::string &name) {
-        const Tensor &wt = weights.get(name + ".weight");
-        w = wt.data;
-        out = wt.rows();
-        in = wt.cols();
-        b = weights.get(name + ".bias").data;
-    }
+    Linear(const Weights &weights, const std::string &name, int outRows, int inCols)
+        : w(weights.get(name + ".weight", {outRows, inCols}).data),
+          b(weights.get(name + ".bias", {outRows}).data),
+          out(outRows),
+          in(inCols) {}
     // A slice of the rows of a packed projection (the q, k and v of in_proj_weight).
     Linear(const float *weight, const float *bias, int outRows, int inCols)
         : w(weight), b(bias), out(outRows), in(inCols) {}
@@ -175,11 +173,8 @@ struct LayerNorm {
     int d = 0;
 
     LayerNorm() = default;
-    LayerNorm(const Weights &weights, const std::string &name) {
-        g = weights.get(name + ".weight").data;
-        b = weights.get(name + ".bias").data;
-        d = weights.get(name + ".weight").rows();
-    }
+    LayerNorm(const Weights &weights, const std::string &name, int width)
+        : g(weights.get(name + ".weight", {width}).data), b(weights.get(name + ".bias", {width}).data), d(width) {}
     RowMat apply(const RowMat &x) const {
         RowMat y(x.rows(), d);
         ConstRow gain(g, d), bias(b, d);
@@ -199,14 +194,13 @@ struct Attention {
     int heads = 0;
 
     Attention() = default;
-    Attention(const Weights &weights, const std::string &name, int nhead) : heads(nhead) {
-        const Tensor &in = weights.get(name + ".in_proj_weight");
-        const float *bias = weights.get(name + ".in_proj_bias").data;
-        int d = in.cols();
+    Attention(const Weights &weights, const std::string &name, int nhead, int d) : heads(nhead) {
+        const Tensor &in = weights.get(name + ".in_proj_weight", {3 * d, d});
+        const float *bias = weights.get(name + ".in_proj_bias", {3 * d}).data;
         q = Linear(in.data, bias, d, d);
         k = Linear(in.data + static_cast<size_t>(d) * d, bias + d, d, d);
         v = Linear(in.data + 2 * static_cast<size_t>(d) * d, bias + 2 * d, d, d);
-        out = Linear(weights, name + ".out_proj");
+        out = Linear(weights, name + ".out_proj", d, d);
     }
 
     // Scaled dot-product attention of the queries over the keys and values, per head. With `causal`, query i (the
@@ -239,8 +233,8 @@ struct FeedForward {
     Linear linear1, linear2;
 
     FeedForward() = default;
-    FeedForward(const Weights &weights, const std::string &name)
-        : linear1(weights, name + ".linear1"), linear2(weights, name + ".linear2") {}
+    FeedForward(const Weights &weights, const std::string &name, int d, int dFf)
+        : linear1(weights, name + ".linear1", dFf, d), linear2(weights, name + ".linear2", d, dFf) {}
     RowMat apply(const RowMat &x) const { return linear2.apply(linear1.apply(x).cwiseMax(0.0f)); }
 };
 
@@ -275,22 +269,24 @@ struct Transformer::Impl {
     Linear outProj;
 
     explicit Impl(const std::string &path) : weights(path), config(weights.config()) {
-        srcEmbed = weights.get("src_embed.weight").data;
-        tgtEmbed = weights.get("tgt_embed.weight").data;
-        positions = weights.get("pos_enc.pe").data;
-        embedScale = std::sqrt(static_cast<float>(config.dModel));
+        // Every tensor is taken with the shape the computation reads it in (Weights::get checks it)
+        const int d = config.dModel, ff = config.dFf, h = config.nhead, vocab = config.vocabSize;
+        srcEmbed = weights.get("src_embed.weight", {vocab, d}).data;
+        tgtEmbed = weights.get("tgt_embed.weight", {vocab, d}).data;
+        positions = weights.get("pos_enc.pe", {1, config.maxLen, d}).data;
+        embedScale = std::sqrt(static_cast<float>(d));
         for (int i = 0; i < config.encLayers; i++) {
             std::string p = "encoder.layers." + std::to_string(i);
-            encoder.push_back({LayerNorm(weights, p + ".norm1"), LayerNorm(weights, p + ".norm2"),
-                               Attention(weights, p + ".self_attn", config.nhead), FeedForward(weights, p)});
+            encoder.push_back({LayerNorm(weights, p + ".norm1", d), LayerNorm(weights, p + ".norm2", d),
+                               Attention(weights, p + ".self_attn", h, d), FeedForward(weights, p, d, ff)});
         }
         for (int i = 0; i < config.decLayers; i++) {
             std::string p = "decoder.layers." + std::to_string(i);
-            decoder.push_back({LayerNorm(weights, p + ".norm1"), LayerNorm(weights, p + ".norm2"),
-                               LayerNorm(weights, p + ".norm3"), Attention(weights, p + ".self_attn", config.nhead),
-                               Attention(weights, p + ".multihead_attn", config.nhead), FeedForward(weights, p)});
+            decoder.push_back({LayerNorm(weights, p + ".norm1", d), LayerNorm(weights, p + ".norm2", d),
+                               LayerNorm(weights, p + ".norm3", d), Attention(weights, p + ".self_attn", h, d),
+                               Attention(weights, p + ".multihead_attn", h, d), FeedForward(weights, p, d, ff)});
         }
-        outProj = Linear(weights, "out_proj");
+        outProj = Linear(weights, "out_proj", vocab, d);
     }
 
     // Embedding times the square root of d_model, plus the position, for the tokens at firstPosition onward.

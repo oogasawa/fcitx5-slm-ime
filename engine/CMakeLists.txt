@@ -92,6 +92,11 @@ target_include_directories(key-actions-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/
 target_link_libraries(key-actions-test PRIVATE Fcitx5::Utils)
 add_test(NAME key-actions-test COMMAND key-actions-test)
 
+# A damaged weights file is refused, never read past its end (a tiny model is written by the test)
+add_executable(weights-test test/weights-test.cpp)
+target_link_libraries(weights-test PRIVATE slm-ime-model)
+add_test(NAME weights-test COMMAND weights-test WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
 # The model against the answers of PyTorch (needs SLM_IME_WEIGHTS and SLM_IME_GOLDEN; skipped without them)
 add_executable(model-check test/model-check.cpp)
 target_link_libraries(model-check PRIVATE slm-ime-model)

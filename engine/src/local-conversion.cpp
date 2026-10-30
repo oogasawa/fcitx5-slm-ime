@@ -5,7 +5,9 @@
 #include <fcitx-utils/log.h>
 
 #include <cstdlib>
+#include <fcntl.h>
 #include <filesystem>
+#include <unistd.h>
 #include <stdexcept>
 
 namespace llm_ime {
@@ -26,13 +28,24 @@ std::shared_ptr<Converter> load() {
     std::string model = environment("SLM_IME_MODEL_DIR", "/usr/share/slm-ime/model");
     std::filesystem::path data =
         std::filesystem::path(environment("XDG_DATA_HOME", environment("HOME", ".") + "/.local/share")) / "slm-ime";
+    // The history holds words the user typed: only the user may read it
     std::error_code ignored;
     std::filesystem::create_directories(data, ignored);
+    std::filesystem::permissions(data, std::filesystem::perms::owner_all, ignored);
+    std::filesystem::path history = data / "user_history.tsv";
+    if (!std::filesystem::exists(history, ignored)) {
+        int fd = open(history.c_str(), O_WRONLY | O_CREAT | O_CLOEXEC, 0600);
+        if (fd >= 0) {
+            close(fd);
+        }
+    }
+    std::filesystem::permissions(history, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write,
+                                 ignored);
 
     ConverterSettings settings;
     settings.weightsPath = model + "/slm-ime-weights.bin";
     settings.tokenizerPath = model + "/tokenizer.json";
-    settings.historyPath = (data / "user_history.tsv").string();
+    settings.historyPath = history.string();
     std::unique_ptr<CandidateSource> anthy;
     try {
         anthy = std::make_unique<AnthyCandidates>();

@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <fcntl.h>
 #include <stdexcept>
 #include <sys/mman.h>
@@ -14,9 +15,30 @@ namespace llmime::model {
 
 namespace {
 constexpr char kMagic[8] = {'S', 'L', 'M', 'I', 'M', 'E', 'W', '1'};
+// No dimension of the model is larger than this; larger numbers in a header are damage.
+constexpr int kLargestDimension = 1 << 24;
+
+int dimension(const nlohmann::json &value, const char *what) {
+    long long n = value.get<long long>();
+    if (n <= 0 || n > kLargestDimension) {
+        throw std::runtime_error(std::string("the weights have a wrong ") + what);
+    }
+    return static_cast<int>(n);
 }
+} // namespace
 
 Weights::Weights(const std::string &path) {
+    try {
+        read(path);
+    } catch (...) {
+        if (mapped_ != nullptr) {
+            munmap(mapped_, mappedSize_);
+        }
+        throw;
+    }
+}
+
+void Weights::read(const std::string &path) {
     int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
         throw std::runtime_error("cannot open the weights " + path);
@@ -44,25 +66,32 @@ Weights::Weights(const std::string &path) {
     }
     auto header = nlohmann::json::parse(bytes + 12, bytes + 12 + headerLen);
     const auto &c = header.at("config");
-    config_.vocabSize = c.at("vocab_size");
-    config_.dModel = c.at("d_model");
-    config_.nhead = c.at("nhead");
-    config_.encLayers = c.at("enc_layers");
-    config_.decLayers = c.at("dec_layers");
-    config_.dFf = c.at("d_ff");
-    config_.maxLen = c.at("max_len");
+    config_.vocabSize = dimension(c.at("vocab_size"), "vocab_size");
+    config_.dModel = dimension(c.at("d_model"), "d_model");
+    config_.nhead = dimension(c.at("nhead"), "nhead");
+    config_.encLayers = dimension(c.at("enc_layers"), "enc_layers");
+    config_.decLayers = dimension(c.at("dec_layers"), "dec_layers");
+    config_.dFf = dimension(c.at("d_ff"), "d_ff");
+    config_.maxLen = dimension(c.at("max_len"), "max_len");
+    if (config_.dModel % config_.nhead != 0) {
+        throw std::runtime_error("the weights have a d_model that is not a multiple of nhead");
+    }
 
     const char *data = bytes + 12 + headerLen;
     size_t dataSize = mappedSize_ - 12 - headerLen;
     for (const auto &t : header.at("tensors")) {
         Tensor tensor;
         size_t count = 1;
-        for (int dim : t.at("shape")) {
-            tensor.shape.push_back(dim);
-            count *= static_cast<size_t>(dim);
+        for (const auto &dim : t.at("shape")) {
+            int n = dimension(dim, "shape");
+            tensor.shape.push_back(n);
+            if (count > std::numeric_limits<size_t>::max() / sizeof(float) / static_cast<size_t>(n)) {
+                throw std::runtime_error("a tensor of the weights is too large");
+            }
+            count *= static_cast<size_t>(n);
         }
-        size_t offset = t.at("offset");
-        if (offset + count * sizeof(float) > dataSize) {
+        unsigned long long offset = t.at("offset").get<unsigned long long>();
+        if (offset % alignof(float) != 0 || offset > dataSize || count > (dataSize - offset) / sizeof(float)) {
             throw std::runtime_error("a tensor of the weights is cut: " + t.at("name").get<std::string>());
         }
         tensor.data = reinterpret_cast<const float *>(data + offset);
@@ -76,10 +105,13 @@ Weights::~Weights() {
     }
 }
 
-const Tensor &Weights::get(const std::string &name) const {
+const Tensor &Weights::get(const std::string &name, const std::vector<int> &shape) const {
     auto it = tensors_.find(name);
     if (it == tensors_.end()) {
         throw std::runtime_error("the weights have no tensor " + name);
+    }
+    if (it->second.shape != shape) {
+        throw std::runtime_error("the tensor " + name + " of the weights has another shape");
     }
     return it->second;
 }

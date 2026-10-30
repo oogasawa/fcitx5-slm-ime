@@ -274,7 +274,7 @@ private:
         if (is(key, Action::Commit)) {
             std::string hiragana = romajiToHiragana(state->buffer_.userInput());
             ic->commitString(hiragana);
-            rememberCommitted(state, hiragana);
+            rememberCommitted(ic, state, hiragana);
             resetState(ic, state);
             event.filterAndAccept();
             return;
@@ -700,10 +700,22 @@ private:
     // The text before the cursor for a conversion: what the application tells, or, when it tells nothing,
     // the text committed in this input context
     std::string textBeforeCursor(InputContext *ic, LlmImeState *state) {
+        if (isPrivate(ic)) {
+            return "";
+        }
         return tellsSurroundingText(ic) ? getSurroundingContext(ic) : state->committed_;
     }
 
-    static void rememberCommitted(LlmImeState *state, const std::string &text) {
+    // A password field, or a field the application marks as sensitive: what is typed there is not learned, not kept
+    // as the text before the cursor, and not read from the application.
+    static bool isPrivate(InputContext *ic) {
+        return ic->capabilityFlags().testAny(CapabilityFlag::PasswordOrSensitive);
+    }
+
+    static void rememberCommitted(InputContext *ic, LlmImeState *state, const std::string &text) {
+        if (isPrivate(ic)) {
+            return;
+        }
         state->committed_ = appendCommitted(state->committed_, text, kCommittedChars);
     }
 
@@ -787,7 +799,7 @@ private:
         } catch (const std::exception &e) {
             // On error, just commit the hiragana
             ic->commitString(hiragana);
-            rememberCommitted(state, hiragana);
+            rememberCommitted(ic, state, hiragana);
             resetState(ic, state);
         }
     }
@@ -886,7 +898,7 @@ private:
             for (auto &changed : changedChoices(state->offered_, committed)) {
                 corrections.push_back({{"reading", changed.reading}, {"chosen", changed.text}});
             }
-            if (!corrections.empty()) {
+            if (!corrections.empty() && !isPrivate(ic)) {
                 json req = {{"input", hiragana}, {"output", result}, {"corrections", corrections}};
                 conversion_.post("/api/record", req);
             }
@@ -894,7 +906,7 @@ private:
             // Ignore record failures
         }
 
-        rememberCommitted(state, result);
+        rememberCommitted(ic, state, result);
 
         resetState(ic, state);
     }
@@ -905,7 +917,7 @@ private:
 
         std::string text = continuationCandidates_[index];
         ic->commitString(text);
-        rememberCommitted(ic->propertyFor(&factory_), text);
+        rememberCommitted(ic, ic->propertyFor(&factory_), text);
 
         // Clear continuation state
         continuationCandidates_.clear();

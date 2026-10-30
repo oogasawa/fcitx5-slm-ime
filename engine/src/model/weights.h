@@ -36,10 +36,14 @@ public:
     Weights &operator=(const Weights &) = delete;
 
     const Config &config() const { return config_; }
-    // The tensor of that name; throws std::runtime_error when there is none.
-    const Tensor &get(const std::string &name) const;
+    // The tensor of that name, which must have the given shape; throws std::runtime_error when there is none or
+    // its shape is another. The callers give the shape the model needs, so that a damaged file cannot make them
+    // read past the data of a tensor.
+    const Tensor &get(const std::string &name, const std::vector<int> &shape) const;
 
 private:
+    void read(const std::string &path);
+
     Config config_;
     std::map<std::string, Tensor> tensors_;
     void *mapped_ = nullptr;
