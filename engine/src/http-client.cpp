@@ -1,5 +1,7 @@
 #include "http-client.h"
 #include <curl/curl.h>
+#include <cstdlib>
+#include <fstream>
 #include <stdexcept>
 
 namespace llm_ime {
@@ -18,6 +20,20 @@ struct CurlGlobalInit {
 static CurlGlobalInit curlInit;
 } // namespace
 
+// The header with the token the conversion server wrote for this user ($XDG_DATA_HOME/slm-ime/server-token). The
+// server refuses requests without it, so that other accounts and web pages cannot use it. The file is read for every
+// request: the server writes a new token at every start.
+static std::string tokenHeader() {
+    const char *data = std::getenv("XDG_DATA_HOME");
+    std::string dir = data != nullptr && *data != '\0' ? std::string(data)
+                                                       : std::string(std::getenv("HOME") ? std::getenv("HOME") : ".") +
+                                                             "/.local/share";
+    std::ifstream in(dir + "/slm-ime/server-token");
+    std::string token;
+    std::getline(in, token);
+    return "X-SLM-IME-Token: " + token;
+}
+
 HttpClient::HttpClient(const std::string &baseUrl) : baseUrl_(baseUrl) {}
 
 HttpClient::~HttpClient() {}
@@ -35,10 +51,12 @@ nlohmann::json HttpClient::post(const std::string &path,
 
     struct curl_slist *headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, tokenHeader().c_str());
 
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, requestBody.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);  // a refusal (403) is an error, not an answer
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
@@ -66,14 +84,18 @@ nlohmann::json HttpClient::get(const std::string &pathWithQuery) {
     std::string url = baseUrl_ + pathWithQuery;
     std::string responseBody;
 
+    struct curl_slist *headers = curl_slist_append(nullptr, tokenHeader().c_str());
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);  // a refusal (403) is an error, not an answer
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &responseBody);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 2L);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 1L);
 
     CURLcode res = curl_easy_perform(curl);
+    curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
     if (res != CURLE_OK) {

@@ -15,7 +15,11 @@
 #include <fcitx-utils/inputbuffer.h>
 #include <fcitx-utils/key.h>
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
 #include <thread>
@@ -116,6 +120,7 @@ public:
         std::string fullHiragana;
         std::string textBefore;
         std::vector<Choice> offered;
+        std::chrono::steady_clock::time_point at;  // when it was committed
     };
     LastCommit lastCommit_;
 };
@@ -132,6 +137,13 @@ public:
         instance->inputContextManager().registerProperty("llmImeState",
                                                           &factory_);
         dispatcher_.attach(&instance->eventLoop());
+        watchCursor(instance);
+    }
+
+    // Waits for the work still running on other threads: it uses the engine.
+    ~LlmImeEngine() override {
+        std::unique_lock<std::mutex> lock(backgroundMutex_);
+        backgroundDone_.wait(lock, [this] { return backgroundRunning_ == 0; });
     }
 
     void keyEvent(const InputMethodEntry & /*entry*/, KeyEvent &event) override {
@@ -250,7 +262,7 @@ private:
         if (key.check(Key(FcitxKey_Return)) && state->buffer_.size() > 0) {
             std::string hiragana = romajiToHiragana(state->buffer_.userInput());
             ic->commitString(hiragana);
-            rememberCommitted(state, hiragana);
+            rememberCommitted(ic, state, hiragana);
             resetState(ic, state);
             event.filterAndAccept();
             return;
@@ -528,7 +540,7 @@ private:
         std::string reading = state->segments_[idx].reading;
         unsigned id = state->conversionId_;
         auto ref = ic->watch();
-        std::thread([this, ref, idx, reading, context, id]() {
+        runInBackground([this, ref, idx, reading, context, id]() {
             try {
                 llm_ime::HttpClient client(kDaemonUrl);
                 json resp = client.post("/api/segment-candidates",
@@ -552,7 +564,7 @@ private:
             } catch (const std::exception &) {
                 // the first Space fetches them then
             }
-        }).detach();
+        });
     }
 
     // Re-fetch candidates for a segment after its reading changed
@@ -685,10 +697,22 @@ private:
     // The text before the cursor for a conversion: what the application tells, or, when it tells nothing,
     // the text committed in this input context
     std::string textBeforeCursor(InputContext *ic, LlmImeState *state) {
+        if (isPrivate(ic)) {
+            return "";
+        }
         return tellsSurroundingText(ic) ? getSurroundingContext(ic) : state->committed_;
     }
 
-    static void rememberCommitted(LlmImeState *state, const std::string &text) {
+    // A password field, or a field the application marks as sensitive: what is typed there is not learned, not kept
+    // as the text before the cursor, and not read from the application.
+    static bool isPrivate(InputContext *ic) {
+        return ic->capabilityFlags().testAny(CapabilityFlag::PasswordOrSensitive);
+    }
+
+    static void rememberCommitted(InputContext *ic, LlmImeState *state, const std::string &text) {
+        if (isPrivate(ic)) {
+            return;
+        }
         state->committed_ = appendCommitted(state->committed_, text, kCommittedChars);
     }
 
@@ -772,7 +796,7 @@ private:
         } catch (const std::exception &e) {
             // On error, just commit the hiragana
             ic->commitString(hiragana);
-            rememberCommitted(state, hiragana);
+            rememberCommitted(ic, state, hiragana);
             resetState(ic, state);
         }
     }
@@ -851,7 +875,8 @@ private:
             result += seg.candidates[seg.selectedIndex];
         }
         state->lastCommit_ = {true, result, state->segments_, state->activeSegment_, state->llmMode_,
-                              state->fullHiragana_, state->textBefore_, state->offered_};
+                              state->fullHiragana_, state->textBefore_, state->offered_,
+                              std::chrono::steady_clock::now()};
         ic->commitString(result);
 
         // Record what the user changed asynchronously (fire and forget). "corrections" lists the segments the user
@@ -867,7 +892,7 @@ private:
             for (auto &changed : changedChoices(state->offered_, committed)) {
                 corrections.push_back({{"reading", changed.reading}, {"chosen", changed.text}});
             }
-            if (!corrections.empty()) {
+            if (!corrections.empty() && !isPrivate(ic)) {
                 json req = {{"input", hiragana}, {"output", result}, {"corrections", corrections}};
                 httpClient_.post("/api/record", req);
             }
@@ -875,7 +900,7 @@ private:
             // Ignore record failures
         }
 
-        rememberCommitted(state, result);
+        rememberCommitted(ic, state, result);
 
         resetState(ic, state);
     }
@@ -886,7 +911,7 @@ private:
 
         std::string text = continuationCandidates_[index];
         ic->commitString(text);
-        rememberCommitted(ic->propertyFor(&factory_), text);
+        rememberCommitted(ic, ic->propertyFor(&factory_), text);
 
         // Clear continuation state
         continuationCandidates_.clear();
@@ -910,27 +935,28 @@ private:
         panel.setAuxDown(aux);
         ic->updateUserInterface(UserInterfaceComponent::InputPanel);
 
-        // Run in background thread
-        std::thread([this, ic, context]() {
+        // Run in background thread; the input context may be gone when the answer comes
+        auto ref = ic->watch();
+        runInBackground([this, ref, context]() {
             try {
                 json req = {{"context", context}, {"n", 5}};
                 json resp = predictClient_.post("/api/continue", req);
 
                 // Schedule UI update on main thread
-                dispatcher_.schedule(
-                    [this, ic, resp = std::move(resp)]() {
+                dispatcher_.schedule([this, ref, resp = std::move(resp)]() {
+                    if (auto *ic = ref.get()) {
                         showContinuationCandidates(ic, resp);
-                    });
+                    }
+                });
             } catch (const std::exception &) {
-                dispatcher_.schedule(
-                    [ic]() {
-                        auto &panel = ic->inputPanel();
-                        panel.reset();
-                        ic->updateUserInterface(
-                            UserInterfaceComponent::InputPanel);
-                    });
+                dispatcher_.schedule([ref]() {
+                    if (auto *ic = ref.get()) {
+                        ic->inputPanel().reset();
+                        ic->updateUserInterface(UserInterfaceComponent::InputPanel);
+                    }
+                });
             }
-        }).detach();
+        });
     }
 
     // Store continuation candidates and show in UI (called on main thread)
@@ -1114,11 +1140,54 @@ private:
         ic->updateUserInterface(UserInterfaceComponent::InputPanel);
     }
 
+    // The cursor moves a while after a commit, when the application shows the committed text. A later move is the
+    // user's (a click of the mouse), and the take-back would then delete other text.
+    static constexpr std::chrono::milliseconds kCommitShown{500};
+
+    // The last commit is forgotten when the input context loses the focus, and, in an application that does not
+    // tell the text around the cursor (so that the take-back cannot check what it deletes), when the cursor moves
+    // after the commit was shown.
+    void watchCursor(Instance *instance) {
+        eventHandlers_.push_back(instance->watchEvent(
+            EventType::InputContextFocusOut, EventWatcherPhase::Default, [this](Event &event) {
+                auto *ic = static_cast<InputContextEvent &>(event).inputContext();
+                ic->propertyFor(&factory_)->lastCommit_.valid = false;
+            }));
+        eventHandlers_.push_back(instance->watchEvent(
+            EventType::InputContextCursorRectChanged, EventWatcherPhase::Default, [this](Event &event) {
+                auto *ic = static_cast<InputContextEvent &>(event).inputContext();
+                auto &last = ic->propertyFor(&factory_)->lastCommit_;
+                if (last.valid && !tellsSurroundingText(ic) &&
+                    std::chrono::steady_clock::now() - last.at > kCommitShown) {
+                    last.valid = false;
+                }
+            }));
+    }
+
+    // Runs `work` on another thread. The engine counts such work and waits for it when it is destroyed.
+    void runInBackground(std::function<void()> work) {
+        {
+            std::lock_guard<std::mutex> lock(backgroundMutex_);
+            backgroundRunning_++;
+        }
+        std::thread([this, work = std::move(work)]() {
+            work();
+            std::lock_guard<std::mutex> lock(backgroundMutex_);
+            if (--backgroundRunning_ == 0) {
+                backgroundDone_.notify_all();
+            }
+        }).detach();
+    }
+
     Instance *instance_;
     llm_ime::HttpClient httpClient_;
     llm_ime::HttpClient predictClient_;
     FactoryFor<LlmImeState> factory_;
     EventDispatcher dispatcher_;
+    std::vector<std::unique_ptr<HandlerTableEntry<EventHandler>>> eventHandlers_;
+    std::mutex backgroundMutex_;
+    std::condition_variable backgroundDone_;
+    int backgroundRunning_ = 0;  // work running on other threads (runInBackground)
     std::vector<std::string> continuationCandidates_;  // current continuation candidates
     int continuationIndex_ = 0;    // currently highlighted continuation candidate
 };

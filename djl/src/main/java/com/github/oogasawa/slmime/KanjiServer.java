@@ -131,14 +131,17 @@ public class KanjiServer {
     public void startAndBlock(int port) throws IOException {
         // The text the user types goes through this server, so it listens on this machine only unless told otherwise.
         String bind = System.getProperty("bind.address", "127.0.0.1");
+        // Only the user's own engine may use it: it sends the token written here (AccessGuard)
+        AccessGuard guard = new AccessGuard(AccessGuard.writeNewToken(tokenFile()), port);
         HttpServer server = HttpServer.create(new InetSocketAddress(bind, port), 0);
-        server.createContext("/api/convert", this::handleConvert);
+        server.createContext("/api/convert", this::handleConvert).getFilters().add(guard);
         server.createContext("/api/health", ex -> respond(ex, 200, "{\"status\":\"ok\"}"));
-        server.createContext("/api/segment-convert", ex -> answer(ex, ime::segmentConvert));
-        server.createContext("/api/segment-candidates", ex -> answer(ex, ime::segmentCandidates));
-        server.createContext("/api/record", ex -> answer(ex, ime::record));
-        server.createContext("/api/continue", ex -> answer(ex, ime::continuation));
-        server.createContext("/api/predict", ex -> respond(ex, 200, ime.predict()));
+        server.createContext("/api/segment-convert", ex -> answer(ex, ime::segmentConvert)).getFilters().add(guard);
+        server.createContext("/api/segment-candidates", ex -> answer(ex, ime::segmentCandidates))
+            .getFilters().add(guard);
+        server.createContext("/api/record", ex -> answer(ex, ime::record)).getFilters().add(guard);
+        server.createContext("/api/continue", ex -> answer(ex, ime::continuation)).getFilters().add(guard);
+        server.createContext("/api/predict", ex -> respond(ex, 200, ime.predict())).getFilters().add(guard);
         server.start();
         log.info("kana-kanji-server listening on :" + port);
         // block forever
@@ -174,6 +177,22 @@ public class KanjiServer {
             log.warning("Convert error: " + e.getMessage());
             respond(ex, 500, "{\"error\":\"" + escape(e.getMessage()) + "\"}");
         }
+    }
+
+    /**
+     * The file of the token the engine must send: {@code -Dtoken.file=PATH}, by default
+     * {@code $XDG_DATA_HOME/slm-ime/server-token}, where the engine reads it.
+     */
+    private static java.nio.file.Path tokenFile() {
+        String path = System.getProperty("token.file");
+        if (path != null && !path.isBlank()) {
+            return Paths.get(path);
+        }
+        String data = System.getenv("XDG_DATA_HOME");
+        if (data == null || data.isBlank()) {
+            data = System.getProperty("user.home") + "/.local/share";
+        }
+        return Paths.get(data, "slm-ime", "server-token");
     }
 
     /** A request and a response that are both JSON text. */
