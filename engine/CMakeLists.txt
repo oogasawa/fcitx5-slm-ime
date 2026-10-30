@@ -28,6 +28,19 @@ target_include_directories(slm-ime-model PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(slm-ime-model PUBLIC Eigen3::Eigen nlohmann_json::nlohmann_json)
 set_target_properties(slm-ime-model PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# The conversion: the model, the readings of the bunsetsu, the user's choices and the candidates of Anthy
+pkg_check_modules(ANTHY REQUIRED IMPORTED_TARGET anthy)
+add_library(slm-ime-conversion STATIC
+    src/conversion/tokenizer.cpp
+    src/conversion/reading-aligner.cpp
+    src/conversion/user-history.cpp
+    src/conversion/history-substitution.cpp
+    src/conversion/anthy-candidates.cpp
+    src/conversion/converter.cpp
+)
+target_link_libraries(slm-ime-conversion PUBLIC slm-ime-model PkgConfig::ANTHY)
+set_target_properties(slm-ime-conversion PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_library(llm-ime MODULE
     src/llm-ime-engine.cpp
     src/http-client.cpp
@@ -75,3 +88,7 @@ add_executable(model-check test/model-check.cpp)
 target_link_libraries(model-check PRIVATE slm-ime-model)
 add_test(NAME model-check COMMAND model-check)
 set_tests_properties(model-check PROPERTIES SKIP_RETURN_CODE 77)
+
+# Answers requests with the C++ conversion, to compare them with those of the server of version 1
+add_executable(conversion-dump test/conversion-dump.cpp)
+target_link_libraries(conversion-dump PRIVATE slm-ime-conversion)
