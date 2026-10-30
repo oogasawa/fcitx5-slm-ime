@@ -20,6 +20,28 @@ constexpr double kUnexplainedCost = 3.0;
 constexpr double kExplainedCost = 1.0;
 // The most characters of the end of a reading that are put back.
 constexpr size_t kMostPutBack = 3;
+// The longest reading the model converts in one run. The source (the context, SEP, the reading, EOS) and the answer
+// (the text with '|' between the bunsetsu) must both fit in max_len positions; a longer reading is converted in
+// pieces of at most this many characters.
+constexpr size_t kLongestPiece = 64;
+// A piece is cut after a punctuation mark when there is one in the last characters it may take.
+constexpr size_t kLookBackForPunctuation = 32;
+
+// Where the piece of `reading` that starts at `start` ends: after the last punctuation mark within reach, else at
+// the longest piece.
+size_t pieceEnd(const std::u32string &reading, size_t start) {
+    size_t end = std::min(reading.size(), start + kLongestPiece);
+    if (end == reading.size()) {
+        return end;
+    }
+    static const std::u32string marks = U"、。，．！？!?・」』）";
+    for (size_t at = end; at > start + kLongestPiece - kLookBackForPunctuation; at--) {
+        if (marks.find(reading[at - 1]) != std::u32string::npos) {
+            return at;
+        }
+    }
+    return end;
+}
 
 bool onlyJapanese(const std::u32string &text) {
     static const std::u32string extra = U"ー々、。！？「」『』（）…・";
@@ -108,7 +130,28 @@ std::vector<int> Converter::sourceIds(const std::u32string &input, const std::u3
 }
 
 std::u32string Converter::translate(const std::u32string &input, const std::u32string &context) const {
-    return translate(*model_.encode(sourceIds(input, context)), input);
+    if (input.size() <= kLongestPiece) {
+        return translate(*model_.encode(sourceIds(input, context)), input);
+    }
+    // A long reading in pieces, each after the text before it and the conversion of the pieces before it
+    std::u32string answer;
+    std::u32string before = context;
+    for (size_t start = 0; start < input.size();) {
+        size_t end = pieceEnd(input, start);
+        std::u32string piece = input.substr(start, end - start);
+        std::u32string converted = covered(piece, translate(*model_.encode(sourceIds(piece, before)), piece));
+        if (!answer.empty() && !converted.empty()) {
+            answer.push_back(U'|');
+        }
+        answer += converted;
+        for (char32_t c : converted) {
+            if (c != U'|') {
+                before.push_back(c);
+            }
+        }
+        start = end;
+    }
+    return answer;
 }
 
 std::u32string Converter::translate(const model::Transformer::Memory &memory, const std::u32string &input) const {
@@ -200,9 +243,17 @@ std::vector<Converter::Segment> Converter::segmentConvert(const std::u32string &
 
 std::vector<std::u32string> Converter::segmentCandidates(const std::u32string &input, const std::u32string &context,
                                                          size_t wanted, std::u32string *output) {
-    // One run of the encoder for the conversion and for the scores of the dictionary candidates.
-    auto memory = model_.encode(sourceIds(input, context));
-    Substituted answer = substituteHistory(input, modelSegments(input, translate(*memory, input)), history_);
+    // One run of the encoder for the conversion and for the scores of the dictionary candidates. A reading too long
+    // for one run is converted in pieces, and its dictionary candidates are left in the order of the dictionary.
+    std::shared_ptr<const model::Transformer::Memory> memory;
+    std::u32string translated;
+    if (input.size() <= kLongestPiece) {
+        memory = model_.encode(sourceIds(input, context));
+        translated = translate(*memory, input);
+    } else {
+        translated = translate(input, context);
+    }
+    Substituted answer = substituteHistory(input, modelSegments(input, translated), history_);
     std::u32string own = joined(answer.texts);
     if (output != nullptr) {
         *output = own;

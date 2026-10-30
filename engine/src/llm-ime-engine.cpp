@@ -18,7 +18,11 @@
 #include <fcitx-utils/inputbuffer.h>
 #include <fcitx-utils/key.h>
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
@@ -117,6 +121,7 @@ public:
         std::string fullHiragana;
         std::string textBefore;
         std::vector<Choice> offered;
+        std::chrono::steady_clock::time_point at;  // when it was committed
     };
     LastCommit lastCommit_;
 };
@@ -131,7 +136,14 @@ public:
         instance->inputContextManager().registerProperty("llmImeState",
                                                           &factory_);
         dispatcher_.attach(&instance->eventLoop());
+        watchCursor(instance);
         reloadConfig();
+    }
+
+    // Waits for the work still running on other threads: it uses the engine.
+    ~LlmImeEngine() override {
+        std::unique_lock<std::mutex> lock(backgroundMutex_);
+        backgroundDone_.wait(lock, [this] { return backgroundRunning_ == 0; });
     }
 
     // The configuration: the key binding profile and the keys of the Custom profile
@@ -544,7 +556,7 @@ private:
         std::string reading = state->segments_[idx].reading;
         unsigned id = state->conversionId_;
         auto ref = ic->watch();
-        std::thread([this, ref, idx, reading, context, id]() {
+        runInBackground([this, ref, idx, reading, context, id]() {
             try {
                 json resp = conversion_.post("/api/segment-candidates",
                                         {{"input", reading}, {"context", context}, {"n", 5}});
@@ -567,7 +579,7 @@ private:
             } catch (const std::exception &) {
                 // the first Space fetches them then
             }
-        }).detach();
+        });
     }
 
     // Re-fetch candidates for a segment after its reading changed
@@ -878,7 +890,8 @@ private:
             result += seg.candidates[seg.selectedIndex];
         }
         state->lastCommit_ = {true, result, state->segments_, state->activeSegment_, state->llmMode_,
-                              state->fullHiragana_, state->textBefore_, state->offered_};
+                              state->fullHiragana_, state->textBefore_, state->offered_,
+                              std::chrono::steady_clock::now()};
         ic->commitString(result);
 
         // Record what the user changed asynchronously (fire and forget). "corrections" lists the segments the user
@@ -941,27 +954,28 @@ private:
         panel.setAuxDown(aux);
         ic->updateUserInterface(UserInterfaceComponent::InputPanel);
 
-        // Run in background thread
-        std::thread([this, ic, context]() {
+        // Run in background thread; the input context may be gone when the answer comes
+        auto ref = ic->watch();
+        runInBackground([this, ref, context]() {
             try {
                 json req = {{"context", context}, {"n", 5}};
                 json resp = conversion_.post("/api/continue", req);
 
                 // Schedule UI update on main thread
-                dispatcher_.schedule(
-                    [this, ic, resp = std::move(resp)]() {
+                dispatcher_.schedule([this, ref, resp = std::move(resp)]() {
+                    if (auto *ic = ref.get()) {
                         showContinuationCandidates(ic, resp);
-                    });
+                    }
+                });
             } catch (const std::exception &) {
-                dispatcher_.schedule(
-                    [ic]() {
-                        auto &panel = ic->inputPanel();
-                        panel.reset();
-                        ic->updateUserInterface(
-                            UserInterfaceComponent::InputPanel);
-                    });
+                dispatcher_.schedule([ref]() {
+                    if (auto *ic = ref.get()) {
+                        ic->inputPanel().reset();
+                        ic->updateUserInterface(UserInterfaceComponent::InputPanel);
+                    }
+                });
             }
-        }).detach();
+        });
     }
 
     // Store continuation candidates and show in UI (called on main thread)
@@ -1147,6 +1161,45 @@ private:
 
     static constexpr const char *kConfigFile = "conf/llm-ime.conf";
 
+    // The cursor moves a while after a commit, when the application shows the committed text. A later move is the
+    // user's (a click of the mouse), and the take-back would then delete other text.
+    static constexpr std::chrono::milliseconds kCommitShown{500};
+
+    // The last commit is forgotten when the input context loses the focus, and, in an application that does not
+    // tell the text around the cursor (so that the take-back cannot check what it deletes), when the cursor moves
+    // after the commit was shown.
+    void watchCursor(Instance *instance) {
+        eventHandlers_.push_back(instance->watchEvent(
+            EventType::InputContextFocusOut, EventWatcherPhase::Default, [this](Event &event) {
+                auto *ic = static_cast<InputContextEvent &>(event).inputContext();
+                ic->propertyFor(&factory_)->lastCommit_.valid = false;
+            }));
+        eventHandlers_.push_back(instance->watchEvent(
+            EventType::InputContextCursorRectChanged, EventWatcherPhase::Default, [this](Event &event) {
+                auto *ic = static_cast<InputContextEvent &>(event).inputContext();
+                auto &last = ic->propertyFor(&factory_)->lastCommit_;
+                if (last.valid && !tellsSurroundingText(ic) &&
+                    std::chrono::steady_clock::now() - last.at > kCommitShown) {
+                    last.valid = false;
+                }
+            }));
+    }
+
+    // Runs `work` on another thread. The engine counts such work and waits for it when it is destroyed.
+    void runInBackground(std::function<void()> work) {
+        {
+            std::lock_guard<std::mutex> lock(backgroundMutex_);
+            backgroundRunning_++;
+        }
+        std::thread([this, work = std::move(work)]() {
+            work();
+            std::lock_guard<std::mutex> lock(backgroundMutex_);
+            if (--backgroundRunning_ == 0) {
+                backgroundDone_.notify_all();
+            }
+        }).detach();
+    }
+
     // The keys of every operation in the chosen profile
     void applyKeys() {
         keys_.assign(actionInfos().size(), KeyList());
@@ -1258,6 +1311,10 @@ private:
     llm_ime::LocalConversion conversion_;
     FactoryFor<LlmImeState> factory_;
     EventDispatcher dispatcher_;
+    std::vector<std::unique_ptr<HandlerTableEntry<EventHandler>>> eventHandlers_;
+    std::mutex backgroundMutex_;
+    std::condition_variable backgroundDone_;
+    int backgroundRunning_ = 0;  // work running on other threads (runInBackground)
     std::vector<std::string> continuationCandidates_;  // current continuation candidates
     int continuationIndex_ = 0;    // currently highlighted continuation candidate
 };
