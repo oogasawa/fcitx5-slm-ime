@@ -1,0 +1,104 @@
+# Japanese translation of fcitx5-slm-ime.
+msgid ""
+msgstr ""
+"Project-Id-Version: fcitx5-slm-ime\n"
+"PO-Revision-Date: 2026-10-31 12:00+0900\n"
+"Last-Translator: Osamu Ogasawara <osamu.ogasawara@gmail.com>\n"
+"Language-Team: Japanese\n"
+"Language: ja\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Convert"
+msgstr "変換"
+
+msgid "Commit"
+msgstr "確定"
+
+msgid "Cancel the reading"
+msgstr "読みを取り消す"
+
+msgid "Delete the character before the cursor"
+msgstr "カーソルの前の文字を消す"
+
+msgid "Delete the character after the cursor"
+msgstr "カーソルの後の文字を消す"
+
+msgid "Move the cursor left"
+msgstr "カーソルを左へ"
+
+msgid "Move the cursor right"
+msgstr "カーソルを右へ"
+
+msgid "Move the cursor to the start"
+msgstr "カーソルを先頭へ"
+
+msgid "Move the cursor to the end"
+msgstr "カーソルを末尾へ"
+
+msgid "Back to the reading"
+msgstr "読みに戻る"
+
+msgid "Next candidate"
+msgstr "次の候補"
+
+msgid "Previous candidate"
+msgstr "前の候補"
+
+msgid "Next bunsetsu"
+msgstr "次の文節"
+
+msgid "Previous bunsetsu"
+msgstr "前の文節"
+
+msgid "First bunsetsu"
+msgstr "先頭の文節"
+
+msgid "Last bunsetsu"
+msgstr "最後の文節"
+
+msgid "Make the bunsetsu longer"
+msgstr "文節を伸ばす"
+
+msgid "Make the bunsetsu shorter"
+msgstr "文節を縮める"
+
+msgid "Convert the whole reading with the model only"
+msgstr "読み全体をモデルだけで変換"
+
+msgid "Hiragana"
+msgstr "ひらがな"
+
+msgid "Katakana"
+msgstr "全角カタカナ"
+
+msgid "Half-width katakana"
+msgstr "半角カタカナ"
+
+msgid "Full-width alphabet"
+msgstr "全角英数"
+
+msgid "Alphabet"
+msgstr "半角英数"
+
+msgid "Take the last commit back"
+msgstr "直前の確定を取り消す"
+
+msgid "Default"
+msgstr "既定"
+
+msgid "MS-IME"
+msgstr "MS-IME 風"
+
+msgid "ATOK"
+msgstr "ATOK 風"
+
+msgid "Custom"
+msgstr "カスタム"
+
+msgid "Key binding profile (press OK to put its keys into the list below)"
+msgstr "キー割り当ての型（選んで OK を押すと、下の一覧がその型のキーに入れ替わります）"
+
+msgid "Keys in effect (changing one makes the profile Custom)"
+msgstr "使われているキー（変えると型はカスタムになります）"

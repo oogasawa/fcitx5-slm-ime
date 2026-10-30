@@ -152,15 +152,36 @@ public:
     }
 
     // The configuration: the key binding profile and the keys of the Custom profile
+    // The list of keys always holds the keys in effect. Read from the file, a profile other than Custom gives its
+    // keys to the list.
     void reloadConfig() override {
         readAsIni(config_, kConfigFile);
+        if (*config_.profile != KeyProfile::Custom) {
+            takeKeysOf(*config_.profile);
+        }
         applyKeys();
     }
     const Configuration *getConfig() const override { return &config_; }
+    // Saved from the configuration tool: a profile just chosen puts its keys into the list; keys changed by hand
+    // under a profile make it Custom.
     void setConfig(const RawConfig &raw) override {
+        KeyProfile before = *config_.profile;
         config_.load(raw, true);
+        KeyProfile now = *config_.profile;
+        if (now != KeyProfile::Custom) {
+            if (now != before) {
+                takeKeysOf(now);
+            } else if (!config_.keys->hasKeysOf(now)) {
+                config_.profile.setValue(KeyProfile::Custom);
+            }
+        }
         safeSaveAsIni(config_, kConfigFile);
         applyKeys();
+    }
+    void takeKeysOf(KeyProfile profile) {
+        SlmImeKeyConfig keys = *config_.keys;
+        keys.takeKeysOf(profile);
+        config_.keys.setValue(keys);
     }
 
     void keyEvent(const InputMethodEntry & /*entry*/, KeyEvent &event) override {
@@ -1217,9 +1238,7 @@ private:
         keys_.assign(actionInfos().size(), KeyList());
         for (size_t i = 0; i < actionInfos().size(); i++) {
             const auto &info = actionInfos()[i];
-            keys_[static_cast<size_t>(info.action)] = *config_.profile == KeyProfile::Custom
-                                                          ? config_.customKeys->keys(i)
-                                                          : keyList(profileKeys(info, *config_.profile));
+            keys_[static_cast<size_t>(info.action)] = config_.keys->keys(i);
         }
     }
 
@@ -1335,6 +1354,7 @@ private:
 class LlmImeEngineFactory : public AddonFactory {
 public:
     AddonInstance *create(AddonManager *manager) override {
+        registerDomain(FCITX_GETTEXT_DOMAIN, FCITX_INSTALL_LOCALEDIR);
         return new LlmImeEngine(manager->instance());
     }
 };

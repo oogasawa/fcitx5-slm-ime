@@ -1,7 +1,8 @@
 #pragma once
 // The configuration of the engine, shown by fcitx5-configtool and kept in conf/llm-ime.conf: the key binding
-// profile, and the keys of every operation for the Custom profile. As in fcitx5-anthy, the keys of the other
-// profiles are fixed (src/key-actions.h); a user who wants other keys picks Custom and changes them there.
+// profile and the keys of every operation. The keys shown are always the keys in effect: choosing a profile puts its
+// keys (src/key-actions.h) into the list, and changing a key in the list makes the profile Custom (the engine does
+// both when the configuration is saved). The labels are English; po/ has their translations.
 #include "key-actions.h"
 
 #include <fcitx-config/configuration.h>
@@ -25,14 +26,14 @@ inline fcitx::KeyList keyList(const std::vector<std::string> &keys) {
     return list;
 }
 
-// The keys of every operation for the Custom profile, one option per operation, in the order of actionInfos().
-// They start as the keys of the Default profile.
+// The keys of every operation, one option per operation, in the order of actionInfos(). They start as the keys of
+// the Default profile.
 class SlmImeKeyConfig : public fcitx::Configuration {
 public:
     SlmImeKeyConfig() {
         for (const auto &info : actionInfos()) {
             keys_.push_back(std::make_unique<fcitx::KeyListOption>(
-                this, info.name, info.label, keyList(info.defaultKeys),
+                this, info.name, _(info.label), keyList(info.defaultKeys),
                 fcitx::KeyListConstrain(fcitx::KeyConstrainFlag::AllowModifierLess)));
         }
     }
@@ -46,6 +47,23 @@ public:
 
     // The keys of the operation at `index` in actionInfos().
     const fcitx::KeyList &keys(size_t index) const { return keys_[index]->value(); }
+    void setKeys(size_t index, const fcitx::KeyList &keys) { keys_[index]->setValue(keys); }
+
+    // Whether every operation has the keys of `profile` (Custom has none of its own).
+    bool hasKeysOf(KeyProfile profile) const {
+        for (size_t i = 0; i < actionInfos().size(); i++) {
+            if (keys(i) != keyList(profileKeys(actionInfos()[i], profile))) {
+                return false;
+            }
+        }
+        return true;
+    }
+    // Puts the keys of `profile` into every operation.
+    void takeKeysOf(KeyProfile profile) {
+        for (size_t i = 0; i < actionInfos().size(); i++) {
+            setKeys(i, keyList(profileKeys(actionInfos()[i], profile)));
+        }
+    }
 
 private:
     std::vector<std::unique_ptr<fcitx::KeyListOption>> keys_;
@@ -55,7 +73,9 @@ FCITX_SPECIALIZE_TYPENAME(SlmImeKeyConfig, "SlmImeKeyConfig")
 FCITX_CONFIGURATION(
     SlmImeConfig,
     fcitx::OptionWithAnnotation<KeyProfile, KeyProfileI18NAnnotation> profile{
-        this, "KeyProfile", _("Key binding profile"), KeyProfile::Default};
-    fcitx::Option<SlmImeKeyConfig> customKeys{this, "CustomKeys", _("Keys of the Custom profile")};);
+        this, "KeyProfile", _("Key binding profile (press OK to put its keys into the list below)"),
+        KeyProfile::Default};
+    fcitx::Option<SlmImeKeyConfig> keys{
+        this, "Keys", _("Keys in effect (changing one makes the profile Custom)")};);
 
 } // namespace llmime

@@ -2,7 +2,7 @@ Source: fcitx5-slm-ime
 Section: utils
 Priority: optional
 Maintainer: Osamu Ogasawara <osamu.ogasawara@gmail.com>
-Build-Depends: debhelper-compat (= 13), cmake, pkg-config, libfcitx5core-dev, fcitx5-modules-dev, libcurl4-openssl-dev, nlohmann-json3-dev
+Build-Depends: debhelper-compat (= 13), cmake, pkg-config, gettext, libfcitx5core-dev, fcitx5-modules-dev, libcurl4-openssl-dev, nlohmann-json3-dev
 Standards-Version: 4.7.0
 Homepage: https://github.com/oogasawa/fcitx5-slm-ime
 Rules-Requires-Root: no
