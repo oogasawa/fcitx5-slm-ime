@@ -28,7 +28,8 @@ target_link_libraries(slm-ime-model PUBLIC Eigen3::Eigen nlohmann_json::nlohmann
 set_target_properties(slm-ime-model PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # The conversion: the model, the readings of the bunsetsu, the user's choices and the candidates of Anthy
-pkg_check_modules(ANTHY REQUIRED IMPORTED_TARGET anthy)
+# Anthy is anthy on Debian and Ubuntu and anthy-unicode on Fedora, with the same API
+pkg_search_module(ANTHY REQUIRED IMPORTED_TARGET anthy anthy-unicode)
 add_library(slm-ime-conversion STATIC
     src/conversion/tokenizer.cpp
     src/conversion/reading-aligner.cpp
