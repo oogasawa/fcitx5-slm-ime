@@ -211,12 +211,7 @@ public class KanjiServer {
         int readingLen = tokenizer.encodeChars(input).size() + 1;
 
         try (NDManager sub = manager.newSubManager()) {
-            long[] srcArr = srcIds.stream().mapToLong(Integer::longValue).toArray();
-            NDArray src = sub.create(srcArr, new Shape(1, srcLen));
-            NDArray srcPad = sub.zeros(new Shape(1, srcLen), DataType.BOOLEAN);
-
-            NDList encOut = encoder.predict(new NDList(src, srcPad));
-            NDArray memory = encOut.get(0);
+            NDArray memory = encode(srcIds);
 
             List<Integer> outputIds = new ArrayList<>();
             List<Long> tgtList = new ArrayList<>();
@@ -276,15 +271,16 @@ public class KanjiServer {
         List<Integer> srcIds = SourceIds.of(tokenizer, context, reading, USE_CONTEXT, CONTEXT_CHARS);
         int srcLen = srcIds.size();
         try (NDManager sub = manager.newSubManager()) {
-            NDArray src = sub.create(srcIds.stream().mapToLong(Integer::longValue).toArray(), new Shape(1, srcLen));
-            NDArray memory = encoder.predict(new NDList(src, sub.zeros(new Shape(1, srcLen), DataType.BOOLEAN))).get(0);
+            NDArray memory = encode(srcIds);
             boolean[] maskData = new boolean[tgtLen * tgtLen];
             for (int i = 0; i < tgtLen; i++)
                 for (int j = i + 1; j < tgtLen; j++)
                     maskData[i * tgtLen + j] = true;
+            NDArray memories = memory.repeat(0, count);
+            memories.attach(sub);  // the kept encoder output lives in the base manager; its copies must not
             NDList out = decoder.predict(new NDList(
                     sub.create(tgtArr, new Shape(count, tgtLen)),
-                    memory.repeat(0, count),
+                    memories,
                     sub.create(maskData, new Shape(tgtLen, tgtLen)),
                     sub.create(tgtPadArr, new Shape(count, tgtLen)),
                     sub.zeros(new Shape(count, srcLen), DataType.BOOLEAN)));
@@ -302,6 +298,33 @@ public class KanjiServer {
             }
         }
         return result;
+    }
+
+    /** The source of the last encoder run, and its output. */
+    private List<Integer> encodedSrc;
+    private NDArray encodedMemory;
+
+    /**
+     * The output of the encoder for the source ids. The last one is kept: the candidates of a bunsetsu are scored
+     * right after the bunsetsu is converted, with the same source. The requests come one at a time (the server has
+     * no executor of its own), so the kept output needs no lock.
+     */
+    private NDArray encode(List<Integer> srcIds) throws TranslateException {
+        if (srcIds.equals(encodedSrc)) {
+            return encodedMemory;
+        }
+        int srcLen = srcIds.size();
+        try (NDManager sub = manager.newSubManager()) {
+            NDArray src = sub.create(srcIds.stream().mapToLong(Integer::longValue).toArray(), new Shape(1, srcLen));
+            NDArray memory = encoder.predict(new NDList(src, sub.zeros(new Shape(1, srcLen), DataType.BOOLEAN))).get(0);
+            memory.attach(manager);  // outlives this request
+            if (encodedMemory != null) {
+                encodedMemory.close();
+            }
+            encodedSrc = new ArrayList<>(srcIds);
+            encodedMemory = memory;
+            return memory;
+        }
     }
 
     /** The scores of the next token at every position of the prefix (it starts with BOS): (positions, vocabulary). */

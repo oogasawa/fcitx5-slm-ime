@@ -35,6 +35,35 @@ struct Segment {
     bool llmFetched = false;
 };
 
+// The address of the conversion daemon
+constexpr const char *kDaemonUrl = "http://localhost:8190";
+
+// Takes the candidates of a bunsetsu from the daemon's /api/segment-candidates answer. The daemon puts them in the
+// order the model gives them after the text before the bunsetsu, so its order is taken; the candidates it does not
+// have follow, and the selection stays on the same text.
+static void takeCandidates(Segment &seg, const nlohmann::json &resp) {
+    if (!resp.contains("candidates")) {
+        return;
+    }
+    std::string selected = seg.candidates.empty() ? "" : seg.candidates[seg.selectedIndex];
+    std::vector<std::string> ordered;
+    std::set<std::string> seen;
+    for (auto &c : resp["candidates"]) {
+        std::string val = c.get<std::string>();
+        if (seen.insert(val).second) {
+            ordered.push_back(val);
+        }
+    }
+    for (auto &val : seg.candidates) {
+        if (seen.insert(val).second) {
+            ordered.push_back(val);
+        }
+    }
+    seg.candidates = ordered;
+    auto at = std::find(seg.candidates.begin(), seg.candidates.end(), selected);
+    seg.selectedIndex = at == seg.candidates.end() ? 0 : (int)(at - seg.candidates.begin());
+}
+
 // A candidate for the candidate list UI
 class LlmCandidate : public CandidateWord {
 public:
@@ -63,6 +92,8 @@ public:
     int activeSegment_ = 0;
     // Whether we are in conversion mode (showing segments)
     bool converting_ = false;
+    // Counts the conversions, so that an answer fetched in the background for an earlier one is dropped
+    unsigned conversionId_ = 0;
     // Whether current conversion was initiated by LLM (Ctrl+Enter)
     bool llmMode_ = false;
     // Full hiragana string (for re-segmentation)
@@ -93,8 +124,8 @@ class LlmImeEngine : public InputMethodEngineV2 {
 public:
     LlmImeEngine(Instance *instance)
         : instance_(instance),
-          httpClient_("http://localhost:8190"),
-          predictClient_("http://localhost:8190"),
+          httpClient_(kDaemonUrl),
+          predictClient_(kDaemonUrl),
           factory_([this](InputContext &ic) {
               return new LlmImeState();
           }) {
@@ -353,6 +384,7 @@ private:
             if (state->activeSegment_ < (int)state->segments_.size() - 1) {
                 state->activeSegment_++;
                 updateConversionDisplay(ic, state);
+                prefetchCandidates(ic, state);
             }
             event.filterAndAccept();
             return;
@@ -363,6 +395,7 @@ private:
             if (state->activeSegment_ > 0) {
                 state->activeSegment_--;
                 updateConversionDisplay(ic, state);
+                prefetchCandidates(ic, state);
             }
             event.filterAndAccept();
             return;
@@ -472,31 +505,54 @@ private:
 
             json req = {{"input", seg.reading}, {"context", context}, {"n", 5}};
             json resp = httpClient_.post("/api/segment-candidates", req);
-
-            if (resp.contains("candidates")) {
-                // The daemon puts the candidates in the order the model gives them after the text before the
-                // bunsetsu, so its order is taken; the candidates it does not have follow, and the selection stays.
-                std::string selected = seg.candidates.empty() ? "" : seg.candidates[seg.selectedIndex];
-                std::vector<std::string> ordered;
-                std::set<std::string> seen;
-                for (auto &c : resp["candidates"]) {
-                    std::string val = c.get<std::string>();
-                    if (seen.insert(val).second) {
-                        ordered.push_back(val);
-                    }
-                }
-                for (auto &val : seg.candidates) {
-                    if (seen.insert(val).second) {
-                        ordered.push_back(val);
-                    }
-                }
-                seg.candidates = ordered;
-                auto at = std::find(seg.candidates.begin(), seg.candidates.end(), selected);
-                seg.selectedIndex = at == seg.candidates.end() ? 0 : (int)(at - seg.candidates.begin());
-            }
+            takeCandidates(seg, resp);
         } catch (const std::exception &) {
             // LLM fetch failed; keep existing Mozc candidates
         }
+    }
+
+    // Fetches the candidates of the active bunsetsu in the background, so that the first Space finds them in order.
+    // The answer is taken on the main thread, and only if the conversion and the reading of the bunsetsu are the
+    // same and its candidates were not fetched meanwhile.
+    void prefetchCandidates(InputContext *ic, LlmImeState *state) {
+        int idx = state->activeSegment_;
+        if (!state->converting_ || idx < 0 || idx >= (int)state->segments_.size() ||
+            state->segments_[idx].llmFetched) {
+            return;
+        }
+        std::string context = state->textBefore_;
+        for (int i = 0; i < idx; i++) {
+            auto &s = state->segments_[i];
+            context += s.candidates[s.selectedIndex];
+        }
+        std::string reading = state->segments_[idx].reading;
+        unsigned id = state->conversionId_;
+        auto ref = ic->watch();
+        std::thread([this, ref, idx, reading, context, id]() {
+            try {
+                llm_ime::HttpClient client(kDaemonUrl);
+                json resp = client.post("/api/segment-candidates",
+                                        {{"input", reading}, {"context", context}, {"n", 5}});
+                dispatcher_.schedule([this, ref, idx, reading, id, resp = std::move(resp)]() {
+                    auto *ic = ref.get();
+                    if (!ic) {
+                        return;
+                    }
+                    auto *state = ic->propertyFor(&factory_);
+                    if (state->conversionId_ != id || idx >= (int)state->segments_.size()) {
+                        return;
+                    }
+                    auto &seg = state->segments_[idx];
+                    if (seg.llmFetched || seg.reading != reading) {
+                        return;
+                    }
+                    takeCandidates(seg, resp);
+                    seg.llmFetched = true;
+                });
+            } catch (const std::exception &) {
+                // the first Space fetches them then
+            }
+        }).detach();
     }
 
     // Re-fetch candidates for a segment after its reading changed
@@ -683,6 +739,7 @@ private:
             state->segments_.clear();
             state->activeSegment_ = 0;
             state->converting_ = true;
+            state->conversionId_++;
             state->llmMode_ = false;
 
             if (resp.contains("segments")) {
@@ -711,6 +768,7 @@ private:
 
             rememberOffered(state);
             updateConversionDisplay(ic, state);
+            prefetchCandidates(ic, state);
         } catch (const std::exception &e) {
             // On error, just commit the hiragana
             ic->commitString(hiragana);
