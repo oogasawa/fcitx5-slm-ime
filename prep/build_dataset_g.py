@@ -20,7 +20,9 @@ what is left. With --partial-end-percent, some training rows get a twin whose re
 last bunsetsu (see partial_end_of). SEP is the character the tokenizer reads as the [SEP] token. In --empty-percent of the rows the text
 before the cursor is left empty (the source then starts with SEP), so that the model also converts well where the
 editor does not tell what is before the cursor. A sentence whose reading and kanji have different numbers of
-bunsetsu is used whole.
+bunsetsu is used whole. A row whose fifth column is "skip" (clean_readings.py could not explain its reading) makes
+no row of its own but is still text before the cursor for the rows after it. With --hiragana-source the katakana of
+the readings is written in hiragana, as the user types it.
 
 The split is by chunk, not by row: the sentences of one chunk come from neighbouring articles, so rows of one
 chunk in different splits would leak into the validation and test sets. A chunk goes to valid or test by a hash
@@ -46,8 +48,13 @@ def split_of(chunk_name: str, valid_percent: int, test_percent: int) -> str:
     return "train"
 
 
+def to_hiragana(text: str) -> str:
+    """Katakana written in hiragana (ー and the katakana without a hiragana form stay)."""
+    return "".join(chr(ord(c) - 0x60) if "ァ" <= c <= "ヶ" else c for c in text)
+
+
 def rows_of(path: str):
-    """Yield (reading with '|', kanji with '|', page) in the order of the file."""
+    """Yield (reading with '|', kanji with '|', page, skip) in the order of the file."""
     with open(path, encoding="utf-8") as f:
         for line in f:
             columns = line.rstrip("\n").split("\t")
@@ -56,7 +63,7 @@ def rows_of(path: str):
             reading, kanji = columns[0].strip(), columns[1].strip()
             if not reading or not kanji:
                 continue
-            yield reading, kanji, columns[2] if len(columns) > 2 else ""
+            yield reading, kanji, columns[2] if len(columns) > 2 else "", len(columns) > 4 and columns[4] == "skip"
 
 
 def keeps_context_empty(chunk_name: str, index: int, empty_percent: int) -> bool:
@@ -121,6 +128,8 @@ def main() -> None:
     parser.add_argument("--page-is-document", nargs="*", default=["fw_"],
                         help="prefixes of the chunk names whose every page is a different document; the text before "
                              "the cursor starts afresh at each of their pages (with --context-chars)")
+    parser.add_argument("--hiragana-source", action="store_true",
+                        help="write the katakana of the readings in hiragana, as the user types them")
     args = parser.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 
@@ -129,6 +138,7 @@ def main() -> None:
     with_context = 0
     cut_in_sentence = 0
     partial_rows = 0
+    skipped_rows = 0
     outputs = {name: open(os.path.join(args.out_dir, name + ".tsv"), "w", encoding="utf-8") for name in chunks}
     try:
         for name in sorted(os.listdir(args.pairs_dir)):
@@ -139,7 +149,18 @@ def main() -> None:
             before = ""
             page_before = None
             page_is_document = name.startswith(tuple(args.page_is_document))
-            for index, (reading, kanji, page) in enumerate(rows_of(os.path.join(args.pairs_dir, name))):
+            for index, (reading, kanji, page, skip) in enumerate(rows_of(os.path.join(args.pairs_dir, name))):
+                if args.hiragana_source:
+                    reading = to_hiragana(reading)
+                if skip:
+                    # no row of its own, but it is the text before the cursor of the next rows
+                    skipped_rows += 1
+                    if args.context_chars > 0:
+                        if page != page_before and page_is_document:
+                            before = ""
+                        page_before = page
+                        before = (before + kanji.replace("|", ""))[-4 * args.context_chars:]
+                    continue
                 if args.context_chars <= 0:
                     outputs[split].write(reading.replace("|", "") + "\t" + kanji + "\n")
                     rows[split] += 1
@@ -175,6 +196,7 @@ def main() -> None:
     total = sum(rows.values())
     for split in ("train", "valid", "test"):
         print(f"{split}: {chunks[split]} chunks, {rows[split]} rows")
+    print(f"rows marked skip (text before the cursor only): {skipped_rows}")
     if args.context_chars > 0:
         print(f"rows with a non-empty text before the cursor: {with_context} of {total}")
         print(f"rows that start inside the sentence: {cut_in_sentence} of {total}")
