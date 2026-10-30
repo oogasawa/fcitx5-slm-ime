@@ -258,7 +258,10 @@ private:
         }
 
         if (state->buffer_.size() == 0) {
-            return;  // the keys below act on the reading; without one they go to the application
+            // Without a reading the operations below do nothing and their keys go to the application; a letter
+            // starts the reading
+            typeLetter(ic, state, key, event);
+            return;
         }
 
         // The model's conversion of the whole reading
@@ -334,14 +337,17 @@ private:
             return;
         }
 
-        // Printable ASCII -> add to buffer
+        typeLetter(ic, state, key, event);
+    }
+
+    // A printable ASCII key without modifiers goes into the reading
+    void typeLetter(InputContext *ic, LlmImeState *state, const Key &key, KeyEvent &event) {
         if (key.isSimple() && !key.hasModifier()) {
             auto ch = Key::keySymToUnicode(key.sym());
             if (ch > 0 && ch < 128) {
                 state->buffer_.type(ch);
                 updatePreedit(ic, state);
                 event.filterAndAccept();
-                return;
             }
         }
     }
