@@ -568,13 +568,21 @@ private:
 
     // Fetches the candidates of the active bunsetsu in the background, so that the first Space finds them in order.
     // The answer is taken on the main thread, and only if the conversion and the reading of the bunsetsu are the
-    // same and its candidates were not fetched meanwhile.
+    // same and its candidates were not fetched meanwhile. One fetch runs at a time: fetches asked for while moving
+    // across the bunsetsu would otherwise queue up, and the one the user waits for would come after all of them (0.8 s
+    // behind six). A fetch asked for while one runs is made when it ends, for the bunsetsu active then; the bunsetsu
+    // passed by in between are not fetched.
     void prefetchCandidates(InputContext *ic, LlmImeState *state) {
         int idx = state->activeSegment_;
         if (!state->converting_ || idx < 0 || idx >= (int)state->segments_.size() ||
             state->segments_[idx].llmFetched) {
             return;
         }
+        if (prefetching_) {
+            prefetchNext_ = ic->watch();
+            return;
+        }
+        prefetching_ = true;
         std::string context = state->textBefore_;
         for (int i = 0; i < idx; i++) {
             auto &s = state->segments_[i];
@@ -584,28 +592,31 @@ private:
         unsigned id = state->conversionId_;
         auto ref = ic->watch();
         runInBackground([this, ref, idx, reading, context, id]() {
+            std::optional<json> resp;
             try {
-                json resp = conversion_.post("/api/segment-candidates",
+                resp = conversion_.post("/api/segment-candidates",
                                         {{"input", reading}, {"context", context}, {"n", 5}});
-                dispatcher_.schedule([this, ref, idx, reading, id, resp = std::move(resp)]() {
-                    auto *ic = ref.get();
-                    if (!ic) {
-                        return;
-                    }
-                    auto *state = ic->propertyFor(&factory_);
-                    if (state->conversionId_ != id || idx >= (int)state->segments_.size()) {
-                        return;
-                    }
-                    auto &seg = state->segments_[idx];
-                    if (seg.llmFetched || seg.reading != reading) {
-                        return;
-                    }
-                    takeCandidates(seg, resp);
-                    seg.llmFetched = true;
-                });
             } catch (const std::exception &) {
                 // the first Space fetches them then
             }
+            dispatcher_.schedule([this, ref, idx, reading, id, resp = std::move(resp)]() {
+                prefetching_ = false;
+                auto *ic = ref.get();
+                if (ic && resp) {
+                    auto *state = ic->propertyFor(&factory_);
+                    if (state->conversionId_ == id && idx < (int)state->segments_.size()) {
+                        auto &seg = state->segments_[idx];
+                        if (!seg.llmFetched && seg.reading == reading) {
+                            takeCandidates(seg, *resp);
+                            seg.llmFetched = true;
+                        }
+                    }
+                }
+                if (auto *next = prefetchNext_.get()) {
+                    prefetchNext_.unwatch();
+                    prefetchCandidates(next, next->propertyFor(&factory_));
+                }
+            });
         });
     }
 
@@ -1337,6 +1348,8 @@ private:
     FactoryFor<LlmImeState> factory_;
     EventDispatcher dispatcher_;
     std::vector<std::unique_ptr<HandlerTableEntry<EventHandler>>> eventHandlers_;
+    bool prefetching_ = false;                          // a fetch of candidates runs in the background
+    TrackableObjectReference<InputContext> prefetchNext_;  // the input context to fetch for when it ends
     std::mutex backgroundMutex_;
     std::condition_variable backgroundDone_;
     int backgroundRunning_ = 0;  // work running on other threads (runInBackground)
