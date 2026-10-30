@@ -2,39 +2,32 @@ Source: fcitx5-slm-ime
 Section: utils
 Priority: optional
 Maintainer: Osamu Ogasawara <osamu.ogasawara@gmail.com>
-Build-Depends: debhelper-compat (= 13), cmake, pkg-config, gettext, libfcitx5core-dev, fcitx5-modules-dev, libcurl4-openssl-dev, nlohmann-json3-dev
+Build-Depends: debhelper-compat (= 13), cmake, pkg-config, gettext, libfcitx5core-dev, fcitx5-modules-dev, nlohmann-json3-dev, libeigen3-dev, libanthy-dev
 Standards-Version: 4.7.0
 Homepage: https://github.com/oogasawa/fcitx5-slm-ime
 Rules-Requires-Root: no
 
 Package: fcitx5-slm-ime
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, fcitx5, slm-ime-server (>= ${source:Version})
+Depends: ${shlibs:Depends}, ${misc:Depends}, fcitx5, slm-ime-model (>= ${source:Version})
+Breaks: slm-ime-server (<< 2.0.0)
 Description: Japanese input method for fcitx5 using a small language model
- Engine of fcitx5-slm-ime. It turns typed romaji into hiragana, sends the
- reading and the text before the cursor to the conversion server
- (slm-ime-server), and shows the answer bunsetsu by bunsetsu with candidates.
- .
- After the installation, restart fcitx5 and add "SLM IME" to the input methods
- with fcitx5-configtool.
-
-Package: slm-ime-server
-Architecture: amd64 arm64
-Depends: ${misc:Depends}, libanthy1t64 | libanthy1, slm-ime-model (>= ${source:Version})
-Description: Conversion server of fcitx5-slm-ime (kana to kanji on a CPU)
- HTTP server on 127.0.0.1:8190 that converts hiragana to kanji-kana text with
- a small Transformer model, using the text before the cursor as context. It
- runs on a CPU. The package contains the server, its own Java runtime, the PyTorch native libraries
- that the server loads (so that it starts without network access), and a
- systemd user service that starts it at login.
+ Input method engine of fcitx5. It turns typed romaji into hiragana and
+ converts the reading to kanji-kana text with a small Transformer model that
+ also reads the text before the cursor, computed on the CPU inside the engine.
+ The alternative candidates of a bunsetsu come from Anthy, put in order by the
+ model. Keys can be set by profile (Default, MS-IME, ATOK) or one by one.
  .
  The choices of the user are kept in ~/.local/share/slm-ime/user_history.tsv.
+ After the installation, restart fcitx5 and add "SLM IME" to the input methods
+ with fcitx5-configtool. Version 2 needs no conversion server: the
+ slm-ime-server package of version 1 is removed.
 
 Package: slm-ime-model
 Architecture: all
 Depends: ${misc:Depends}
 Description: Trained model of fcitx5-slm-ime
- TorchScript files and the tokenizer of the conversion model of
- fcitx5-slm-ime: a character-level Transformer encoder-decoder with about 60
- million parameters, trained on pairs of a reading and kanji-kana text made by
- an LLM from the Japanese Wikipedia.
+ Weights and tokenizer of the conversion model of fcitx5-slm-ime: a
+ character-level Transformer encoder-decoder with about 60 million parameters,
+ trained on pairs of a reading and kanji-kana text made from the Japanese
+ Wikipedia and FineWeb-2 web pages.

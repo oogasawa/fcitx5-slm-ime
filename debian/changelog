@@ -1,3 +1,20 @@
+fcitx5-slm-ime (2.0.0) unstable; urgency=medium
+
+  * The conversion runs inside the engine, in C++ (Eigen) on the CPU: no
+    conversion server, no Java and no PyTorch. The slm-ime-server package is
+    removed on the upgrade; the history of the user's choices stays.
+  * The model is retrained on readings cleaned with KANJIDIC2, JMdict and
+    Sudachi, and with the readings in hiragana as the user types them.
+  * Key bindings: a key binding profile (Default, MS-IME, ATOK) and the keys of
+    every operation, in fcitx5-configtool, with Japanese labels.
+  * F6 to F10 put the active phrasal unit in hiragana, katakana, half-width
+    katakana, full-width letters and letters.
+  * Nothing is learned in password and sensitive fields; the history is
+    readable by the user only; a damaged model file is refused.
+  * Anthy is found as anthy or anthy-unicode.
+
+ -- Osamu Ogasawara <osamu.ogasawara@gmail.com>  Sat, 31 Oct 2026 18:00:00 +0900
+
 fcitx5-slm-ime (1.1.0) unstable; urgency=low
 
   * The model is trained on FineWeb-2 (Japanese web pages) besides the Japanese
