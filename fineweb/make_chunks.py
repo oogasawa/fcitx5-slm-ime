@@ -13,8 +13,11 @@ of up to --run-length neighbouring sentences is taken. A sentence is used only i
 Japanese prose (see good_sentence); a run ends at the first sentence that is not.
 
 Usage: make_chunks.py OUT_DIR [--row-groups-per-file 3] [--seed 1] [--run-length 10] [--chunk-sentences 450]
-                      [--target-sentences 3300000] [--max-files N]
+                      [--target-sentences 3300000] [--max-files N] [--first-chunk N] [--exclude DIR]
 Besides the chunk files, OUT_DIR/provenance.tsv tells for every run: chunk, page, document id, URL, dump.
+To add a second sample to a first one, give another --seed, a --first-chunk past the names of the first sample (the
+names must still start with fw_), and --exclude the directory of the first sample: its documents (provenance.tsv)
+and its sentences (fw_*.tsv) are not taken again.
 """
 
 import argparse
@@ -118,9 +121,10 @@ def pick_run(sentences, rng, run_length, reasons):
 
 
 class ChunkWriter:
-    def __init__(self, out_dir, chunk_sentences):
+    def __init__(self, out_dir, chunk_sentences, first_chunk=0):
         self.out_dir, self.limit = out_dir, chunk_sentences
-        self.index, self.count, self.page, self.out = 0, 0, 0, None
+        self.first = first_chunk
+        self.index, self.count, self.page, self.out = first_chunk, 0, 0, None
         self.total_sentences, self.total_runs = 0, 0
         self.prov = open(os.path.join(out_dir, "provenance.tsv"), "w", encoding="utf-8")
         self.prov.write("chunk\tpage\tdocument_id\turl\tdump\n")
@@ -160,6 +164,8 @@ def main():
     ap.add_argument("--chunk-sentences", type=int, default=450)
     ap.add_argument("--target-sentences", type=int, default=3300000)
     ap.add_argument("--max-files", type=int, default=0)
+    ap.add_argument("--first-chunk", type=int, default=0, help="the number of the first chunk file (fw_NNNNNNN)")
+    ap.add_argument("--exclude", help="the directory of an earlier sample, whose documents and sentences are skipped")
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 
@@ -167,8 +173,21 @@ def main():
     files = sorted(p for p in fs.ls(REPO_DIR, detail=False) if p.endswith(".parquet"))
     if args.max_files:
         files = files[:args.max_files]
-    writer = ChunkWriter(args.out_dir, args.chunk_sentences)
+    writer = ChunkWriter(args.out_dir, args.chunk_sentences, args.first_chunk)
     seen = set()
+    excluded_docs = set()
+    if args.exclude:
+        with open(os.path.join(args.exclude, "provenance.tsv"), encoding="utf-8") as prov:
+            next(prov)
+            excluded_docs = {line.split("\t")[2] for line in prov}
+        for name in os.listdir(args.exclude):
+            if name.startswith("fw_") and name.endswith(".tsv"):
+                with open(os.path.join(args.exclude, name), encoding="utf-8") as old:
+                    for line in old:
+                        columns = line.rstrip("\n").split("\t")
+                        if len(columns) > 1 and columns[1] and columns[1] != "kanji":
+                            seen.add(hashlib.md5(columns[1].encode("utf-8")).digest()[:8])
+        print("excluded: %d documents, %d sentences of %s" % (len(excluded_docs), len(seen), args.exclude), flush=True)
     reasons, docs_seen, docs_used, dup_runs = {}, 0, 0, 0
     started = time.time()
     for fi, path in enumerate(files):
@@ -185,6 +204,8 @@ def main():
                     rng.shuffle(order)
                     for i in order:
                         docs_seen += 1
+                        if ids[i] in excluded_docs:
+                            continue
                         run = pick_run(list(sentences_of(texts[i])), rng, args.run_length, reasons)
                         if run is None:
                             continue
@@ -198,13 +219,13 @@ def main():
         except Exception as e:  # a file that cannot be read is skipped; the next file goes on
             print("skip %s: %s" % (path.split("/")[-1], e), file=sys.stderr, flush=True)
         print("file %d/%d %s: sentences=%d runs=%d chunks=%d elapsed=%.0fs" % (
-            fi + 1, len(files), path.split("/")[-1], writer.total_sentences, writer.total_runs, writer.index,
+            fi + 1, len(files), path.split("/")[-1], writer.total_sentences, writer.total_runs, writer.index - writer.first,
             time.time() - started), flush=True)
         if writer.total_sentences >= args.target_sentences:
             break
     writer.close()
     print("documents seen=%d, runs taken=%d, runs dropped as repeats=%d" % (docs_seen, docs_used, dup_runs))
-    print("sentences=%d chunks=%d" % (writer.total_sentences, writer.index))
+    print("sentences=%d chunks=%d" % (writer.total_sentences, writer.index - writer.first))
     print("sentences dropped, by reason:", dict(sorted(reasons.items(), key=lambda kv: -kv[1])))
 
 

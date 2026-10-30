@@ -1,0 +1,42 @@
+# The second half of the Wikipedia pairs (the chunks whose number ends in 5), with the workers of wiki-pairs.
+# The order file /data/order_pod.txt lists those chunks; the workers skip the chunks whose pairs exist.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wiki-pairs2
+  namespace: kkime-wiki
+spec:
+  backoffLimit: 20
+  completions: 7
+  parallelism: 7
+  template:
+    spec:
+      containers:
+      - name: worker
+        image: 192.168.5.13:32000/kkime-wiki-worker:2610261606
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: WORKERS
+          value: "20"
+        - name: VURL
+          value: http://gpu-broker.gpu-broker.svc:28005/v1/chat/completions
+        - name: VMODEL
+          value: google/gemma-4-26B-A4B-it
+        resources:
+          limits:
+            cpu: "4"
+            memory: 4Gi
+          requests:
+            cpu: "1"
+            memory: 3Gi
+        volumeMounts:
+        - mountPath: /data
+          name: data
+      restartPolicy: OnFailure
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: wiki-data
