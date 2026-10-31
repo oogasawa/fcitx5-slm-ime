@@ -1,7 +1,7 @@
 // slm-ime-keys: shows the key bindings of SLM IME in a browser, the keys in effect and those of the Default, MS-IME
 // and ATOK profiles. fcitx5-configtool starts it from the button in the configuration of SLM IME. The configuration
-// is read as the engine reads it (conf/llm-ime.conf); the page is written to $XDG_RUNTIME_DIR, readable by the user
-// only, and opened with xdg-open. With --stdout the page is printed instead.
+// is read as the engine reads it (conf/llm-ime.conf); the page is written to $XDG_RUNTIME_DIR (or a new directory
+// under /tmp), readable by the user only, and opened with xdg-open. With --stdout the page is printed instead.
 #include "key-table.h"
 #include "slm-ime-config.h"
 
@@ -54,12 +54,21 @@ int main(int argc, char **argv) {
         std::fputs(html.c_str(), stdout);
         return 0;
     }
+    // The page goes to $XDG_RUNTIME_DIR, readable by the user only. A session without it (a desktop started without
+    // a login manager) gets a new directory of its own under /tmp, also readable by the user only.
+    std::string dir;
     const char *runtime = std::getenv("XDG_RUNTIME_DIR");
-    if (runtime == nullptr || *runtime == '\0') {
-        std::fprintf(stderr, "slm-ime-keys: XDG_RUNTIME_DIR is not set\n");
-        return 1;
+    if (runtime != nullptr && *runtime != '\0') {
+        dir = runtime;
+    } else {
+        char tmpl[] = "/tmp/slm-ime-keys-XXXXXX";
+        if (mkdtemp(tmpl) == nullptr) {
+            std::fprintf(stderr, "slm-ime-keys: cannot make a directory under /tmp: %s\n", std::strerror(errno));
+            return 1;
+        }
+        dir = tmpl;
     }
-    std::string path = std::string(runtime) + "/slm-ime-keys.html";
+    std::string path = dir + "/slm-ime-keys.html";
     int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
     if (fd < 0 || write(fd, html.data(), html.size()) != static_cast<ssize_t>(html.size())) {
         std::fprintf(stderr, "slm-ime-keys: cannot write %s\n", path.c_str());
