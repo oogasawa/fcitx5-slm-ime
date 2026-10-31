@@ -72,7 +72,7 @@ program is the accuracy of Gemma 4, on a PC without a GPU.
 
 ## Speed
 
-One conversion takes 70 to 260 ms on the CPU alone of a mini PC, the ASUS MINIPC PN51-S1: AMD Ryzen 7 5700U (8 cores, 16 threads, 1.8 GHz base clock, up to 4.37 GHz), 32 GB of dual-channel DDR4-3200 memory, no GPU. This is fast enough for daily typing, and the wait is not noticeable in use. On an arm64 machine, the NVIDIA DGX Spark with 20 cores (10 Cortex-X925 and 10 Cortex-A725), one conversion takes 110 to 200 ms on the CPU alone. The package limits PyTorch to 8 threads there, because with a thread on each of the 20 cores one conversion takes about 0.85 s.
+One conversion takes 70 to 260 ms on the CPU alone of a mini PC, the ASUS MINIPC PN51-S1: AMD Ryzen 7 5700U (8 cores, 16 threads, 1.8 GHz base clock, up to 4.37 GHz), 32 GB of dual-channel DDR4-3200 memory, no GPU. This is fast enough for daily typing, and the wait is not noticeable in use. On an arm64 machine, the NVIDIA DGX Spark with 20 cores (10 Cortex-X925 and 10 Cortex-A725), one conversion takes 110 to 200 ms on the CPU alone.
 
 ## Integration of Anthy for the alternative kanji
 
