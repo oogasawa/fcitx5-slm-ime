@@ -136,39 +136,6 @@ sudo cp -r model-root/usr/share/slm-ime /usr/share/
 
 In a source install the engine is still named `llm-ime`, its former name.
 
-## Key bindings
-
-The keys are set in `fcitx5-configtool`: open the configuration of `SLM IME` (select it among the input methods and
-press the configure button). The key binding profile is one of Default, MS-IME, ATOK and Custom; with a Japanese
-locale the labels are in Japanese. The list below the profile always shows the keys in effect: choosing a profile and
-pressing OK puts its keys into the list, and changing a key in the list makes the profile Custom. The `MS-IME` and
-`ATOK` profiles follow the key binding styles of those input methods as the style files of fcitx5-anthy describe them,
-for the operations this program has. The settings are kept in `~/.config/fcitx5/conf/llm-ime.conf`.
-
-| Operation | Default | MS-IME | ATOK |
-|---|---|---|---|
-| Convert | Space | Space, Shift+Space, Henkan | Space, Henkan |
-| Next / previous candidate | Space, Down / Up | Space, Tab, Henkan, Down / Up, Shift+Space | Space, Tab, Henkan / Up |
-| Next / previous phrasal unit | Right / Left | Right, Ctrl+D / Left, Ctrl+S | Shift+Right / Shift+Left |
-| Longer / shorter phrasal unit | Shift+Right / Shift+Left | Shift+Right, Ctrl+L / Shift+Left, Ctrl+E | Right, Ctrl+L / Left, Ctrl+K |
-| Back to the reading | Esc | Esc, BackSpace | Esc, BackSpace |
-| Hiragana, katakana, half-width katakana, full-width letters, letters | F6 to F10 | F6 to F10, Ctrl+U/I/O/P/T | F6 to F10, Ctrl+U/I/O/P/@ |
-| The model's conversion of the whole reading | Ctrl+Enter | Ctrl+Enter | Ctrl+Enter |
-| Take the last commit back | Ctrl+Shift+Insert | Ctrl+Shift+Insert | Ctrl+Shift+Insert |
-
-F9 and F10 pressed again change the letters: lower case, upper case, the first letter in upper case. Letters put in
-with F9 or F10 are not learned.
-
-## Security
-
-Since version 2 there is no conversion server: the text the user types stays inside the fcitx5 process and nothing
-listens on the network. The history of the user's choices (`~/.local/share/slm-ime/user_history.tsv`) is readable by
-the user only. In password fields and fields that the application marks as sensitive nothing is learned, the text is
-not kept, and the text around the cursor is not read. The model file is checked before use: a damaged or altered file
-whose sizes do not fit the model is refused. Version 1.1.0 and earlier had a conversion server on `127.0.0.1:8190`
-that other accounts on the machine and web pages in a browser could also use; 1.2.0 closed it with a token, and 2.0.0
-has no server.
-
 ## Train
 
 The model learns from rows of a reading and the kanji-kana text of that reading. The training data is not
