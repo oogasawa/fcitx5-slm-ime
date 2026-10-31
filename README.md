@@ -67,10 +67,10 @@ the larger the difference: of the Wikipedia readings of 60 characters or more, t
 place to correct, Mozc 18 % and Anthy 3 %.
 
 The training set has about 5.3 million examples, about half from each source: 2.4 million from the Japanese
-Wikipedia and 2.9 million from FineWeb-2. The model has about 60 million parameters. The correct texts are the original
-sentences; their readings were written by Gemma 4, a large language model that needs GPUs, and corrected with
-KANJIDIC2, JMdict and Sudachi. The readings are not perfect either, and the model can learn no better than they are:
-the aim of this program is the accuracy of these corrected readings, on a PC without a GPU.
+Wikipedia and 2.9 million from FineWeb-2. The model has about 60 million parameters.
+The correct texts are the original sentences. Their readings were written by Gemma 4, a large language model that
+needs GPUs, and the obvious errors were corrected by post-processing. The ideal for this program is the accuracy of
+Gemma 4 with this correction, on a PC without a GPU.
 
 ## Speed
 
