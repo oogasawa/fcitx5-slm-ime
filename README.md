@@ -38,9 +38,10 @@ for the same reading, the model output, then Anthy's candidates in the order the
 
 - Since version 2 the model runs inside the engine, in C++ with Eigen: no conversion server, no Java and no PyTorch
   are needed. The model is read from `/usr/share/slm-ime/model` when fcitx5 starts.
-- The model is trained on pairs of a reading and the kanji-kana text that a large LLM (Gemma 4) made
-  from sentences of the Japanese Wikipedia and of FineWeb-2 (Japanese web pages: blogs, shops, diaries); the readings
-  are checked with KANJIDIC2 and JMdict, and the ones that fail are read again with Sudachi (see "Clean the readings"). The training rows imitate real typing: the reading starts
+- The model is trained on pairs of a reading and a sentence of the Japanese Wikipedia or of FineWeb-2 (Japanese web
+  pages: blogs, shops, diaries). The sentence is the original text; a large LLM (Gemma 4) wrote its reading and its
+  phrasal unit (bunsetsu) boundaries, the readings are checked with KANJIDIC2 and JMdict, and the ones that fail are
+  read again with Sudachi (see "Clean the readings"). The training rows imitate real typing: the reading starts
   at a phrasal unit (bunsetsu) boundary inside a sentence, and the text before it is given as context
   (20 % of the rows have an empty context).
 - When the user changes a phrasal unit (bunsetsu), by picking another candidate or by moving a border, the pair
@@ -66,9 +67,10 @@ the larger the difference: of the Wikipedia readings of 60 characters or more, t
 place to correct, Mozc 18 % and Anthy 3 %.
 
 The training set has about 5.3 million examples, about half from each source: 2.4 million from the Japanese
-Wikipedia and 2.9 million from FineWeb-2. The model has about 60 million parameters. The correct texts were made by
-Gemma 4, a large language model that needs GPUs, and Gemma 4 does not convert perfectly either. The ideal for this
-program is the accuracy of Gemma 4, on a PC without a GPU.
+Wikipedia and 2.9 million from FineWeb-2. The model has about 60 million parameters. The correct texts are the original
+sentences; their readings were written by Gemma 4, a large language model that needs GPUs, and corrected with
+KANJIDIC2, JMdict and Sudachi. The readings are not perfect either, and the model can learn no better than they are:
+the aim of this program is the accuracy of these corrected readings, on a PC without a GPU.
 
 ## Speed
 
@@ -158,8 +160,8 @@ of every profile" opens a table of the keys of every profile in a browser.
 
 The model learns from rows of a reading and the kanji-kana text of that reading. The training data is not
 distributed, so training starts from the Japanese Wikipedia: a large language model (Gemma 4) writes the reading and
-the phrasal unit (bunsetsu) boundaries of its sentences, and the small model is trained to reproduce that answer from
-the reading and the text before the cursor. Training has six parts. Each part reads the files that the part
+the phrasal unit (bunsetsu) boundaries of its sentences, and the small model is trained to reproduce the original
+sentence from the reading and the text before the cursor. Training has six parts. Each part reads the files that the part
 before it wrote.
 
 ### Make the pairs from Wikipedia
