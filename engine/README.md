@@ -18,7 +18,7 @@ src/local-conversion.cpp: the conversion, read in the background when fcitx5 sta
 src/model/: the Transformer (Eigen), weights from /usr/share/slm-ime/model/slm-ime-weights.bin
 ```
 
-- The text before the cursor is read from the application through fcitx5 `SurroundingText` (the last 500
+- The text before the cursor is read from the application through fcitx5 `SurroundingText` (the last 100
   characters before the cursor). When the application does not provide it, the text the user committed before in the
   same input field is used instead. In password fields and fields marked sensitive, nothing is read or kept.
 - At commit time the engine learns the phrasal units (bunsetsu) that the user changed: a candidate other than the

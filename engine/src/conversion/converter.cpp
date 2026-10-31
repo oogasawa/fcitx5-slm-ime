@@ -117,9 +117,9 @@ Converter::Converter(const ConverterSettings &settings, std::unique_ptr<Candidat
       barId_(tokenizer_.idOf(U'|')) {}
 
 std::vector<int> Converter::sourceIds(const std::u32string &input, const std::u32string &context) const {
-    std::u32string tail = context.size() > settings_.contextChars
-                              ? context.substr(context.size() - settings_.contextChars)
-                              : context;
+    // As many characters before the cursor as the model was trained to read (in the header of its weights).
+    const size_t contextChars = static_cast<size_t>(model_.config().contextChars);
+    std::u32string tail = context.size() > contextChars ? context.substr(context.size() - contextChars) : context;
     std::vector<int> ids = tokenizer_.encode(tail);
     ids.push_back(Tokenizer::kSep);
     for (int id : tokenizer_.encode(input)) {

@@ -21,7 +21,6 @@ struct ConverterSettings {
     std::string weightsPath;     // export_weights.py
     std::string tokenizerPath;   // tokenizer.json
     std::string historyPath;     // the choices of the user; empty: kept in memory only
-    size_t contextChars = 48;    // how many characters before the cursor the model was trained to read
     size_t mostScored = 20;      // how many dictionary candidates of a bunsetsu the model puts in order
     double sourceWeight = 0;     // how much the order of the dictionary counts against the scores of the model
 };

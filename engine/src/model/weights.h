@@ -17,6 +17,9 @@ struct Config {
     int decLayers = 0;
     int dFf = 0;
     int maxLen = 0;
+    // How many characters before the cursor the model was trained to read (48 in weights written before it was
+    // put in the header).
+    int contextChars = 48;
 };
 
 // One tensor of the file: its shape and its float32 data, row-major as in PyTorch.

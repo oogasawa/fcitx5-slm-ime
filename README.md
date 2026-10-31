@@ -27,7 +27,7 @@ fcitx5 engine (engine/, C++)
    | hiragana + text before the cursor
    v
 conversion inside the engine (engine/src/conversion, engine/src/model: C++, Eigen, CPU)
-   | source = <last 48 characters before the cursor> [SEP] <reading> [EOS]
+   | source = <last 100 characters before the cursor> [SEP] <reading> [EOS]
    v
 conversion model (Transformer encoder-decoder, greedy decoding)
    | kanji-kana text with phrasal unit (bunsetsu) boundaries, e.g.  機械学習|の|アルゴリズム
@@ -231,13 +231,13 @@ failed, 94 % of them were replaced, and 2.9 % and 1.4 % of the sentences were ma
 ### Make the training files
 
 ```bash
-python3 prep/build_dataset_g.py CLEAN_DIR DATA_DIR --context-chars 48 --partial-end-percent 20 --hiragana-source
+python3 prep/build_dataset_g.py CLEAN_DIR DATA_DIR --context-chars 100 --partial-end-percent 20 --hiragana-source
 ```
 
 `CLEAN_DIR` holds the `*_pairs.tsv` files. `--hiragana-source` writes the katakana of the readings in hiragana, as the
 user types them (the language model wrote most readings of katakana words in katakana). The script cuts each sentence the way a user types it, from left to
 right: a row is the reading of a few phrasal units (bunsetsu) from a random place in a sentence, put after the last
-48 characters of the text before it and the separator `SEP`, and the answer is the kanji-kana text of that reading
+100 characters of the text before it and the separator `SEP`, and the answer is the kanji-kana text of that reading
 with `|` kept. In 20 % of the rows (`--empty-percent`) the text before the cursor is left empty, so that the model
 also converts well in applications that do not tell what is before the cursor. `--partial-end-percent` adds a twin
 of a training row whose reading stops inside the okurigana or particles at the end of the last unit (for example
@@ -262,7 +262,7 @@ runs in bfloat16 by default (`--amp bf16`). On an RTX 4080, one epoch of 5.4 mil
 ### Export the model
 
 ```bash
-python3 export_weights.py checkpoints/NAME/best.pt MODEL_DIR/slm-ime-weights.bin
+python3 export_weights.py checkpoints/NAME/best.pt MODEL_DIR/slm-ime-weights.bin 100
 cp DATA_DIR/tokenizer.json MODEL_DIR/
 ```
 

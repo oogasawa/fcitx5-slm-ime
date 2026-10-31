@@ -73,6 +73,9 @@ void Weights::read(const std::string &path) {
     config_.decLayers = dimension(c.at("dec_layers"), "dec_layers");
     config_.dFf = dimension(c.at("d_ff"), "d_ff");
     config_.maxLen = dimension(c.at("max_len"), "max_len");
+    if (c.contains("context_chars")) {
+        config_.contextChars = dimension(c.at("context_chars"), "context_chars");
+    }
     if (config_.dModel % config_.nhead != 0) {
         throw std::runtime_error("the weights have a d_model that is not a multiple of nhead");
     }

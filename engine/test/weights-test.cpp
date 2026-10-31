@@ -150,6 +150,23 @@ int main() {
         }
     }
 
+    // how many characters before the cursor the model reads: 48 when the header does not say, else what it says
+    write(good, bytes);
+    if (Transformer(kPath).config().contextChars != 48) {
+        std::printf("FAIL weights without context_chars do not read 48 characters\n");
+        failures++;
+    }
+    {
+        json h = good;
+        h["config"]["context_chars"] = 100;
+        write(h, bytes);
+        if (Transformer(kPath).config().contextChars != 100) {
+            std::printf("FAIL context_chars 100 was not read\n");
+            failures++;
+        }
+    }
+    damaged("a context_chars of 0", [](json &h) { h["config"]["context_chars"] = 0; });
+
     std::remove(kPath);
     if (failures == 0) {
         std::printf("weights-test: all passed\n");

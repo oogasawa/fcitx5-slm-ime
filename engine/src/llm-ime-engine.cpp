@@ -720,9 +720,13 @@ private:
         return std::min(i, s.size());
     }
 
-    // Get the text before the cursor from the input context (last 500 characters),
-    // so that the conversion can use what the user has already written
-    std::string getSurroundingContext(InputContext *ic) {
+    // How many characters before the cursor are read from the application or kept from the commits. The conversion
+    // gives the model the last context_chars of them (in the header of the weights), which is at most this many.
+    static constexpr size_t kContextChars = 100;
+
+    // Get the last `maxChars` characters before the cursor from the input context, so that the conversion can use
+    // what the user has already written
+    std::string getSurroundingContext(InputContext *ic, size_t maxChars = kContextChars) {
         if (ic->capabilityFlags().test(CapabilityFlag::SurroundingText)) {
             auto &st = ic->surroundingText();
             if (st.isValid()) {
@@ -730,8 +734,8 @@ private:
                 // cursor() counts characters, not bytes
                 std::string before = text.substr(0, byteOffsetOfChar(text, st.cursor()));
                 size_t chars = utf8CharCount(before);
-                if (chars > 500) {
-                    before = before.substr(byteOffsetOfChar(before, chars - 500));
+                if (chars > maxChars) {
+                    before = before.substr(byteOffsetOfChar(before, chars - maxChars));
                 }
                 return before;
             }
@@ -740,7 +744,7 @@ private:
     }
 
     // Number of characters of committed text kept for each input context
-    static constexpr size_t kCommittedChars = 500;
+    static constexpr size_t kCommittedChars = kContextChars;
 
     // Whether the application tells the text around the cursor
     static bool tellsSurroundingText(InputContext *ic) {
@@ -777,7 +781,7 @@ private:
         state->lastCommit_.valid = false;
         const size_t chars = utf8CharCount(last.text);
         if (tellsSurroundingText(ic)) {
-            if (!endsWithText(getSurroundingContext(ic), last.text)) {
+            if (!endsWithText(getSurroundingContext(ic, chars), last.text)) {
                 return false;
             }
             ic->deleteSurroundingText(-static_cast<int>(chars), static_cast<unsigned int>(chars));
