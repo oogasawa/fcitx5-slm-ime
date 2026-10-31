@@ -23,32 +23,35 @@ separate morphological analyzer.
 ## How it works
 
 ```
-fcitx5 engine (engine/, C++)
-   | hiragana + text before the cursor
-   v
-conversion inside the engine (engine/src/conversion, engine/src/model: C++, Eigen, CPU)
-   | source = <last 100 characters before the cursor> [SEP] <reading> [EOS]
-   v
-conversion model (Transformer encoder-decoder, greedy decoding)
-   | kanji-kana text with phrasal unit (bunsetsu) boundaries, e.g.  機械学習|の|アルゴリズム
-   v
-reading of each phrasal unit (bunsetsu) is found by alignment; candidates = the choice the user made before
-for the same reading, the model output, then Anthy's candidates in the order the model scores them
+application (editor, browser, ...)
+    |  keys typed by the user, the text before the cursor
+    v
+fcitx5
+    |  key events, the text before the cursor (SurroundingText)
+    v
+SLM IME engine (llm-ime.so, loaded into the fcitx5 process)
+    |-- romaji -> hiragana: the reading, shown in the preedit
+    `-- converter (in the same process)
+          |-- Transformer model   <- /usr/share/slm-ime/model (slm-ime-weights.bin, tokenizer.json)
+          |-- Anthy               dictionary candidates of a phrasal unit
+          `-- the user's choices  <-> ~/.local/share/slm-ime/user_history.tsv
+    |
+    v
+fcitx5 -> application: the preedit, the candidate window and the committed text
 ```
 
-- Since version 2 the model runs inside the engine, in C++ with Eigen: no conversion server, no Java and no PyTorch
-  are needed. The model is read from `/usr/share/slm-ime/model` when fcitx5 starts.
-- The model is trained on pairs of a reading and a sentence of the Japanese Wikipedia or of FineWeb-2 (Japanese web
-  pages: blogs, shops, diaries). The sentence is the original text; a large LLM (Gemma 4) wrote its reading and its
-  phrasal unit (bunsetsu) boundaries, the readings are checked with KANJIDIC2 and JMdict, and the ones that fail are
-  read again with Sudachi (see "Clean the readings"). The training rows imitate real typing: the reading starts
-  at a phrasal unit (bunsetsu) boundary inside a sentence, and the text before it is given as context
-  (20 % of the rows have an empty context).
-- When the user changes a phrasal unit (bunsetsu), by picking another candidate or by moving a border, the pair
-  (reading, chosen text) is kept in a history file and comes first the next time the same reading appears.
-  The model is not changed by it.
-- When the application does not tell the text before the cursor, the engine sends the text the user committed
-  before in the same input field instead. Ctrl+Shift+Insert takes the last commit back into conversion.
+1. While the user types, the engine turns the romaji into hiragana and shows it in the preedit.
+2. When the user presses the convert key, the engine takes the text before the cursor from the application through
+   fcitx5. If the application does not provide it, the engine takes the text the user committed before in the same
+   input field. The engine gives the converter the reading and the last 100 characters of that text.
+3. The converter gives both to the model, and the model writes the kanji-kana text with `|` between the phrasal units
+   (bunsetsu). The converter finds the reading of each phrasal unit, and puts in the user's earlier choice where the
+   same reading was corrected before. It returns the phrasal units to the engine, which shows them.
+4. When the user moves to a phrasal unit to change it, the engine asks the converter for its candidates. The
+   converter returns the user's earlier choice, the model's text, then the candidates of Anthy, which the model puts
+   in order after the text before the phrasal unit.
+5. When the user commits, the engine sends the text to the application through fcitx5. It records each phrasal unit
+   the user changed in `user_history.tsv`.
 
 ## Accuracy
 
