@@ -51,33 +51,24 @@ for the same reading, the model output, then Anthy's candidates in the order the
 
 ## Accuracy
 
-We compared the accuracy of kanji conversion with Mozc and Anthy.
+We compared the conversion with Mozc and Anthy on sentences of the Japanese Wikipedia and of FineWeb-2 (text of web
+pages) that were not used for training and whose readings passed the check with KANJIDIC2, JMdict and Sudachi
+(`prep/clean_readings.py` of the main branch). Every example is a stretch of a sentence as a user types it: the
+reading of a few phrasal units (bunsetsu), with the text before the cursor. Mozc and Anthy are given the reading only;
+this program is also given the text before the cursor. Short readings are converted correctly by every system, so the
+chart shows the readings of 20 characters or more, by length.
 
-The character error rate is the edit distance between the output and the correct text, divided by the length of the correct text. The exact match is the share of the examples whose output is the same as the correct text. The examples are 4,396 stretches of sentences of the Japanese Wikipedia that were not used for training.
+![Accuracy by the length of the reading: SLM-IME, Mozc and Anthy](docs/accuracy-by-length.svg)
 
-| System | Character error rate | Exact match |
-|---|---|---|
-| This program (1.1.0, 1.2.0) | 3.90 % | 76.3 % |
-| This program (1.0.0) | 4.05 % | 75.5 % |
-| Mozc | 8.99 % | 56.5 % |
-| Anthy | 13.40 % | 47.1 % |
+A place to correct is a run of characters where the output differs from the correct text. The upper charts count
+them per sentence; the lower charts show the share of the sentences with nothing to correct. The longer the reading,
+the larger the difference: of the Wikipedia readings of 60 characters or more, this program converts 47 % without a
+place to correct, Mozc 18 % and Anthy 3 %.
 
-On 5,000 stretches of FineWeb-2 sentences that were not used for training, everyday text of web pages, the character error rate is 4.89 % for 1.1.0 and 7.25 % for 1.0.0, which was trained on the Japanese Wikipedia only; the exact match is 74.3 % and 65.1 %.
-
-The validation loss is the loss measured on sentences that were not used for training; the smaller, the better. The validation sentences of 1.1.0 include FineWeb-2 sentences, so its losses cannot be compared with those of 1.0.0 directly.
-
-| Epoch | Validation loss (1.1.0) | Validation loss (1.0.0) |
-|---|---|---|
-| 1 | 0.1967 | 0.2412 |
-| 2 | 0.1635 | 0.1974 |
-| 3 | 0.1483 | 0.1776 |
-| 4 | 0.1337 | 0.1577 |
-| 5 | 0.1211 | 0.1438 |
-| 6 | 0.1119 | 0.1342 |
-| 7 | 0.1072 | 0.1309 |
-| 8 | 0.1067 | 0.1313 |
-
-The training set of 1.1.0 has 5,400,012 examples, from the Japanese Wikipedia and FineWeb-2, and the model has about 60 million parameters. The correct texts were made by Gemma 4, a large language model that needs GPUs, and Gemma 4 does not convert perfectly either. The ideal for this program is the accuracy of Gemma 4, on a PC without a GPU.
+The training set has about 5.3 million examples, about half from each source: 2.4 million from the Japanese
+Wikipedia and 2.9 million from FineWeb-2. The model has about 60 million parameters. The correct texts were made by
+Gemma 4, a large language model that needs GPUs, and Gemma 4 does not convert perfectly either. The ideal for this
+program is the accuracy of Gemma 4, on a PC without a GPU.
 
 ## Speed
 
