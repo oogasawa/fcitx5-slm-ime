@@ -125,6 +125,29 @@ Upgrade from version 1: the same command removes `slm-ime-server`, the conversio
 longer needed. The history of the choices (`~/.local/share/slm-ime/user_history.tsv`) stays. Restart fcitx5 after
 the upgrade, and log in again to stop the server of version 1 that may still be running.
 
+## Install with the RPM packages
+
+Tested on Fedora 44. The program consists of two RPM packages, each of which declares the packages that it needs:
+
+- `fcitx5-slm-ime`, the engine that runs inside `fcitx5`, with the conversion
+- `slm-ime-model`, the weights and the tokenizer of the model
+
+External components that the packages depend on, which `dnf` installs:
+
+- `fcitx5`, the input method framework
+- Anthy (`anthy-unicode`) with its dictionary
+
+The two packages are on GitHub Releases and not in a `dnf` repository, so both files are named on the command line.
+The release has `fcitx5-slm-ime` for `x86_64` and one `slm-ime-model` for every architecture. Download the two
+`.rpm` files from <https://github.com/oogasawa/fcitx5-slm-ime/releases> into one directory and run this command in
+it:
+
+```bash
+sudo dnf install ./fcitx5-slm-ime-*.x86_64.rpm ./slm-ime-model-*.noarch.rpm
+```
+
+Then restart fcitx5 and add `SLM IME` to the input methods with `fcitx5-configtool`.
+
 ## Install from source
 
 The engine needs fcitx5, CMake 3.16 or later, a C++20 compiler, Eigen 3.3 or later, Anthy (`anthy` or
