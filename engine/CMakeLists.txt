@@ -8,7 +8,12 @@ find_package(PkgConfig REQUIRED)
 find_package(Fcitx5Core REQUIRED)
 find_package(Fcitx5Module REQUIRED COMPONENTS Notifications)
 find_package(nlohmann_json 3.2 REQUIRED)
-find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+# Eigen 3.3 or later (Ubuntu 24.04 has 3.4, Fedora 44 has 5): its configuration file accepts no other major version
+# than the one asked for, so the version is checked here
+find_package(Eigen3 REQUIRED NO_MODULE)
+if(Eigen3_VERSION VERSION_LESS 3.3)
+    message(FATAL_ERROR "Eigen 3.3 or later is needed (found ${Eigen3_VERSION})")
+endif()
 
 
 # fcitx5 addon install directory
