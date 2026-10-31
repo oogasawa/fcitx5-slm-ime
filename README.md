@@ -65,9 +65,10 @@ them per sentence; the lower charts show the share of the sentences with nothing
 the larger the difference: of the Wikipedia readings of 60 characters or more, this program converts 47 % without a
 place to correct, Mozc 18 % and Anthy 3 %.
 
-The training set has about 5.3 million examples, from the Japanese Wikipedia and FineWeb-2, and the model has about
-60 million parameters. The correct texts were made by Gemma 4, a large language model that needs GPUs, and Gemma 4
-does not convert perfectly either. The ideal for this program is the accuracy of Gemma 4, on a PC without a GPU.
+The training set has about 5.3 million examples, about half from each source: 2.4 million from the Japanese
+Wikipedia and 2.9 million from FineWeb-2. The model has about 60 million parameters. The correct texts were made by
+Gemma 4, a large language model that needs GPUs, and Gemma 4 does not convert perfectly either. The ideal for this
+program is the accuracy of Gemma 4, on a PC without a GPU.
 
 ## Speed
 
