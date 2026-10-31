@@ -37,6 +37,15 @@ target_include_directories(llm-ime PRIVATE
 target_compile_definitions(llm-ime PRIVATE FCITX_GETTEXT_DOMAIN="fcitx5-slm-ime"
                                            FCITX_INSTALL_LOCALEDIR="${CMAKE_INSTALL_FULL_LOCALEDIR}")
 
+# slm-ime-keys shows the keys of every profile in a browser; the configuration has a button that starts it
+target_compile_definitions(llm-ime PRIVATE SLM_IME_KEYS_PATH="${CMAKE_INSTALL_FULL_BINDIR}/slm-ime-keys")
+add_executable(slm-ime-keys src/slm-ime-keys.cpp src/key-table.cpp)
+target_include_directories(slm-ime-keys PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(slm-ime-keys PRIVATE Fcitx5::Core)
+target_compile_definitions(slm-ime-keys PRIVATE FCITX_GETTEXT_DOMAIN="fcitx5-slm-ime"
+                                                FCITX_INSTALL_LOCALEDIR="${CMAKE_INSTALL_FULL_LOCALEDIR}"
+                                                SLM_IME_KEYS_PATH="${CMAKE_INSTALL_FULL_BINDIR}/slm-ime-keys")
+
 set_target_properties(llm-ime PROPERTIES
     PREFIX ""
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
@@ -48,6 +57,7 @@ add_subdirectory(po)
 
 # Install
 install(TARGETS llm-ime DESTINATION "${FCITX_INSTALL_LIBDIR}")
+install(TARGETS slm-ime-keys DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(FILES src/llm-ime-addon.conf DESTINATION "${FCITX_INSTALL_ADDONDIR}" RENAME llm-ime.conf)
 install(FILES src/llm-ime.conf DESTINATION "${FCITX_INSTALL_PKGDATADIR}/inputmethod" RENAME llm-ime.conf)
 
@@ -77,3 +87,8 @@ add_executable(key-actions-test test/key-actions-test.cpp)
 target_include_directories(key-actions-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(key-actions-test PRIVATE Fcitx5::Utils)
 add_test(NAME key-actions-test COMMAND key-actions-test)
+
+# The table of the keys that slm-ime-keys shows: every operation once, in its group, with the keys of the profiles
+add_executable(key-table-test test/key-table-test.cpp src/key-table.cpp)
+target_include_directories(key-table-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+add_test(NAME key-table-test COMMAND key-table-test)

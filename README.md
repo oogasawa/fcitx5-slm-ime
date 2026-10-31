@@ -88,27 +88,11 @@ user chose before for the same reading, the SLM's answer, and then Anthy's candi
 how likely it finds each of them after the text before the phrasal unit. Because Anthy has a dictionary,
 it also reaches rare words, single kanji and proper nouns that a small model is weak at.
 
-## Key bindings
+## Keys
 
-The keys are set in `fcitx5-configtool`: open the configuration of `SLM IME`. The key binding profile is one of
-`Default`, `MS-IME`, `ATOK` and `Custom`. The `MS-IME` and `ATOK` profiles follow the key binding styles of those
-input methods as the style files of fcitx5-anthy describe them, for the operations this program has. With `Custom`,
-the keys of every operation are the ones listed under "Keys of the Custom profile", which start as those of
-`Default` and can be changed one by one. The settings are kept in `~/.config/fcitx5/conf/llm-ime.conf`.
-
-| Operation | Default | MS-IME | ATOK |
-|---|---|---|---|
-| Convert | Space | Space, Shift+Space, Henkan | Space, Henkan |
-| Next / previous candidate | Space, Down / Up | Space, Tab, Henkan, Down / Up, Shift+Space | Space, Tab, Henkan / Up |
-| Next / previous phrasal unit | Right / Left | Right, Ctrl+D / Left, Ctrl+S | Shift+Right / Shift+Left |
-| Longer / shorter phrasal unit | Shift+Right / Shift+Left | Shift+Right, Ctrl+L / Shift+Left, Ctrl+E | Right, Ctrl+L / Left, Ctrl+K |
-| Back to the reading | Esc | Esc, BackSpace | Esc, BackSpace |
-| Hiragana, katakana, half-width katakana, full-width letters, letters | F6 to F10 | F6 to F10, Ctrl+U/I/O/P/T | F6 to F10, Ctrl+U/I/O/P/@ |
-| The model's conversion of the whole reading | Ctrl+Enter | Ctrl+Enter | Ctrl+Enter |
-| Take the last commit back | Ctrl+Shift+Insert | Ctrl+Shift+Insert | Ctrl+Shift+Insert |
-
-F9 and F10 pressed again change the letters: lower case, upper case, the first letter in upper case. Letters put in
-with F9 or F10 are not learned.
+The keys are shown and changed in `fcitx5-configtool`: select SLM IME among the input methods and press the configure
+button. Choose a profile (Default, MS-IME or ATOK) or change the keys one by one. The button next to "Table of the keys
+of every profile" opens a table of the keys of every profile in a browser.
 
 ## Security
 

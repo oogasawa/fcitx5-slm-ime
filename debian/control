@@ -10,6 +10,7 @@ Rules-Requires-Root: no
 Package: fcitx5-slm-ime
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, fcitx5, slm-ime-server (>= ${source:Version})
+Recommends: xdg-utils
 Description: Japanese input method for fcitx5 using a small language model
  Engine of fcitx5-slm-ime. It turns typed romaji into hiragana, sends the
  reading and the text before the cursor to the conversion server
