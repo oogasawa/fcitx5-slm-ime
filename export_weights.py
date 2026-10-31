@@ -48,6 +48,9 @@ def main() -> None:
         blobs.append(data + b"\0" * padding)
         offset += len(data) + padding
     header = json.dumps({"config": config, "tensors": tensors}).encode("utf-8")
+    # Spaces after the JSON so that the data starts at a multiple of ALIGN bytes from the start of the file: the engine
+    # maps the file and reads the floats in place, and refuses data that is not float-aligned in memory
+    header += b" " * ((-(len(MAGIC) + 4 + len(header))) % ALIGN)
     with open(output_path, "wb") as out:
         out.write(MAGIC)
         out.write(struct.pack("<I", len(header)))
