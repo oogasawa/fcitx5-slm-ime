@@ -36,7 +36,7 @@ License:        CC-BY-SA-4.0
 BuildArch:      noarch
 
 %description -n slm-ime-model
-Weights and tokenizer of the conversion model of fcitx5-slm-ime: a
+Weights and character vocabulary of the conversion model of fcitx5-slm-ime: a
 character-level Transformer encoder-decoder with about 60 million parameters,
 trained on pairs of a reading and kanji-kana text made from the Japanese
 Wikipedia and FineWeb-2 web pages.
@@ -68,6 +68,7 @@ install -D -m 644 model-release/tokenizer.json %{buildroot}%{_datadir}/slm-ime/m
 
 %files -n slm-ime-model
 %license LICENSE
+%doc MODEL_CARD.md
 %dir %{_datadir}/slm-ime
 %{_datadir}/slm-ime/model/
 
