@@ -151,7 +151,8 @@ In a source install the engine is still named `llm-ime`, its former name.
 ## Keys
 
 The keys are shown and changed in `fcitx5-configtool`: select SLM IME among the input methods and press the configure
-button. Choose a profile (Default, MS-IME or ATOK) or change the keys one by one.
+button. Choose a profile (Default, MS-IME or ATOK) or change the keys one by one. The button next to "Table of the keys
+of every profile" opens a table of the keys of every profile in a browser.
 
 ## Train
 

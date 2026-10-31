@@ -2,7 +2,8 @@
 // The configuration of the engine, shown by fcitx5-configtool and kept in conf/llm-ime.conf: the key binding
 // profile and the keys of every operation. The keys shown are always the keys in effect: choosing a profile puts its
 // keys (src/key-actions.h) into the list, and changing a key in the list makes the profile Custom (the engine does
-// both when the configuration is saved). The labels are English; po/ has their translations.
+// both when the configuration is saved). The labels are English; po/ has their translations. SLM_IME_KEYS_PATH is the
+// installed slm-ime-keys, which shows the keys of every profile.
 #include "key-actions.h"
 
 #include <fcitx-config/configuration.h>
@@ -75,6 +76,9 @@ FCITX_CONFIGURATION(
     fcitx::OptionWithAnnotation<KeyProfile, KeyProfileI18NAnnotation> profile{
         this, "KeyProfile", _("Key binding profile (press OK to put its keys into the list below)"),
         KeyProfile::Default};
+    // A button that opens the table of the keys of every profile in a browser (slm-ime-keys)
+    fcitx::ExternalOption keyTable{this, "KeyTable", _("Table of the keys of every profile (opens in a browser)"),
+                                   SLM_IME_KEYS_PATH};
     fcitx::Option<SlmImeKeyConfig> keys{
         this, "Keys", _("Keys in effect (changing one makes the profile Custom)")};);
 

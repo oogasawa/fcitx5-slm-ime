@@ -22,6 +22,7 @@ BuildRequires:  json-devel
 BuildRequires:  anthy-unicode-devel
 Requires:       fcitx5
 Requires:       slm-ime-model = %{version}-%{release}
+Recommends:     xdg-utils
 
 %description
 An input method engine for fcitx5 that turns typed romaji into hiragana and
@@ -62,6 +63,7 @@ install -D -m 644 model-release/tokenizer.json %{buildroot}%{_datadir}/slm-ime/m
 %files -f %{name}.lang
 %license LICENSE
 %doc README.md
+%{_bindir}/slm-ime-keys
 %{_libdir}/fcitx5/llm-ime.so
 %{_datadir}/fcitx5/addon/llm-ime.conf
 %{_datadir}/fcitx5/inputmethod/llm-ime.conf

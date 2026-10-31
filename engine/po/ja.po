@@ -102,3 +102,27 @@ msgstr "キー割り当ての型（選んで OK を押すと、下の一覧が�
 
 msgid "Keys in effect (changing one makes the profile Custom)"
 msgstr "使われているキー（変えると型はカスタムになります）"
+
+msgid "Table of the keys of every profile (opens in a browser)"
+msgstr "各型のキー割り当ての一覧（ブラウザで開きます）"
+
+msgid "Key bindings of SLM IME"
+msgstr "SLM IME のキー割り当て"
+
+msgid "Operation"
+msgstr "操作"
+
+msgid "Keys in effect"
+msgstr "使われているキー"
+
+msgid " (in effect)"
+msgstr "（使用中）"
+
+msgid "While typing the reading"
+msgstr "読みの入力中"
+
+msgid "While converting"
+msgstr "変換中"
+
+msgid "In both"
+msgstr "どちらでも"
