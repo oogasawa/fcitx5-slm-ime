@@ -30,7 +30,7 @@ fcitx5 engine (engine/, C++)
    | hiragana + text before the cursor        (HTTP, JSON)
    v
 inference server (djl/, Java, DJL + TorchScript, CPU)
-   | source = <last 48 characters before the cursor> [SEP] <reading> [EOS]
+   | source = <last 100 characters before the cursor> [SEP] <reading> [EOS]
    v
 conversion model (Transformer encoder-decoder, greedy decoding)
    | kanji-kana text with phrasal unit (bunsetsu) boundaries, e.g.  機械学習|の|アルゴリズム
@@ -232,7 +232,7 @@ The options are Java system properties (`-D…`). With the Debian packages, put 
 | Option | Meaning |
 |---|---|
 | `-Dmodel.context=true` | the model was trained with the text before the cursor (use `false` for a model trained without it) |
-| `-Dmodel.contextChars=48` | how many characters before the cursor are given to the model |
+| `-Dmodel.contextChars=48` | how many characters before the cursor are given to the model (the package reads it from the file `context_chars` of the model) |
 | `-Dhistory.file=PATH` | file of the candidates the user chose (default `user_history.tsv`; empty = memory only) |
 | `-Dtoken.file=PATH` | file of the token the engine must send (default `$XDG_DATA_HOME/slm-ime/server-token`, where the engine reads it) |
 | `-Dlog.context=true` | log the reading and the text before the cursor of each request |
@@ -275,12 +275,12 @@ units that differ; it changes nothing.
 ### Make the training files
 
 ```bash
-python3 prep/build_dataset_g.py PAIRS_DIR DATA_DIR --context-chars 48 --partial-end-percent 20
+python3 prep/build_dataset_g.py PAIRS_DIR DATA_DIR --context-chars 100 --partial-end-percent 20
 ```
 
 `PAIRS_DIR` holds the `*_pairs.tsv` files. The script cuts each sentence the way a user types it, from left to
 right: a row is the reading of a few phrasal units (bunsetsu) from a random place in a sentence, put after the last
-48 characters of the text before it and the separator `SEP`, and the answer is the kanji-kana text of that reading
+100 characters of the text before it and the separator `SEP`, and the answer is the kanji-kana text of that reading
 with `|` kept. In 20 % of the rows (`--empty-percent`) the text before the cursor is left empty, so that the model
 also converts well in applications that do not tell what is before the cursor. `--partial-end-percent` adds a twin
 of a training row whose reading stops inside the okurigana or particles at the end of the last unit (for example
@@ -305,7 +305,7 @@ runs in bfloat16 by default (`--amp bf16`). On an RTX 4080, one epoch of 5.4 mil
 ### Export the model for the server
 
 ```bash
-python3 export_torchscript.py checkpoints/NAME/best.pt MODEL_DIR
+python3 export_torchscript.py checkpoints/NAME/best.pt MODEL_DIR 100
 cp DATA_DIR/tokenizer.json MODEL_DIR/
 ```
 

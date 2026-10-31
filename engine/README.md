@@ -21,7 +21,7 @@ conversion server (http://localhost:8190)
 ```
 
 - The text before the cursor is read from the application through fcitx5 `SurroundingText`
-  (the last 500 characters before the cursor). It also contains what was typed while the input
+  (the last 100 characters before the cursor). It also contains what was typed while the input
   method was switched off. Applications that do not provide it send no context.
 - At commit time the engine sends the phrasal units (bunsetsu) that the user changed, with `POST /api/record`
   (`reading` and `chosen` of each). A phrasal unit (bunsetsu) is changed when the user took a candidate other

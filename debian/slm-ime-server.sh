@@ -14,6 +14,10 @@ cd "$data"
 # The PyTorch native libraries are in the package; DJL does not download them.
 export DJL_CACHE_DIR=/usr/lib/slm-ime-server/djl-cache
 model=/usr/share/slm-ime/model
+# How many characters before the cursor the model was trained to read (export_torchscript.py writes it; a model
+# without the file was trained with 48).
+context_chars=48
+[ -r "$model/context_chars" ] && context_chars=$(tr -dc 0-9 < "$model/context_chars")
 # The Java runtime of the package (made by jlink). The libjvmcicompiler library is not in it.
 java=/usr/lib/slm-ime-server/runtime/bin/java
 # On aarch64 the cores are of two kinds, and PyTorch with a thread on every core is slower than with a few:
@@ -23,6 +27,6 @@ if [ "$(uname -m)" = aarch64 ]; then
 fi
 # shellcheck disable=SC2086
 exec "$java" -XX:+IgnoreUnrecognizedVMOptions -XX:-UseJVMCICompiler --enable-native-access=ALL-UNNAMED -Xmx2g \
-    -Dmodel.context=true -Dmodel.dir="$model" -Dtokenizer="$model/tokenizer.json" \
+    -Dmodel.context=true -Dmodel.contextChars="${context_chars:-48}" -Dmodel.dir="$model" -Dtokenizer="$model/tokenizer.json" \
     -Dhistory.file="$data/user_history.tsv" -Dtoken.file="$data/server-token" ${SLM_IME_JAVA_OPTS} \
     -jar /usr/share/java/slm-ime-server.jar --server 8190

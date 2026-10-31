@@ -3,7 +3,10 @@
 Export a trained KanaKanjiTransformer to TorchScript (encoder and decoder as two files), the format
 the DJL inference server (djl/KanjiServer) loads.
 
-Usage: export_torchscript.py <checkpoint best.pt> <output-dir> [model-name=m512-12]
+Usage: export_torchscript.py <checkpoint best.pt> <output-dir> <context chars> [model-name=m512-12]
+
+<context chars> is the --context-chars of build_dataset_g.py the model was trained with. It is written to
+<output-dir>/context_chars, which debian/slm-ime-server.sh gives the server as -Dmodel.contextChars.
 
 Writes <output-dir>/encoder_<model-name>.pt and decoder_<model-name>.pt, and the two modules of the decoder with a
 key-value cache (model/cached_decoder.py): crosskv_<model-name>.pt and step_<model-name>.pt.
@@ -47,9 +50,13 @@ class Decoder(torch.nn.Module):
 
 
 def main() -> None:
-    checkpoint_path, out_dir = sys.argv[1], sys.argv[2]
-    name = sys.argv[3] if len(sys.argv) > 3 else "m512-12"
+    if len(sys.argv) not in (4, 5):
+        sys.exit(__doc__)
+    checkpoint_path, out_dir, context_chars = sys.argv[1], sys.argv[2], int(sys.argv[3])
+    name = sys.argv[4] if len(sys.argv) > 4 else "m512-12"
     os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, "context_chars"), "w") as f:
+        f.write(f"{context_chars}\n")
 
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     a = checkpoint["args"]
