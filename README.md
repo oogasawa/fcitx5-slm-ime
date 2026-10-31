@@ -148,6 +148,11 @@ sudo cp -r model-root/usr/share/slm-ime /usr/share/
 
 In a source install the engine is still named `llm-ime`, its former name.
 
+## Keys
+
+The keys are shown and changed in `fcitx5-configtool`: select SLM IME among the input methods and press the configure
+button. Choose a profile (Default, MS-IME or ATOK) or change the keys one by one.
+
 ## Train
 
 The model learns from rows of a reading and the kanji-kana text of that reading. The training data is not
