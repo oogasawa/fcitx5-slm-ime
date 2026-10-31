@@ -73,13 +73,9 @@ program is the accuracy of Gemma 4, on a PC without a GPU.
 ## Speed
 
 The model is computed on the CPU alone. On a mini PC, the ASUS MINIPC PN51-S1 (AMD Ryzen 7 5700U, 8 cores, 16 threads,
-32 GB of DDR4-3200 memory, no GPU), one conversion by the model takes 58 ms on average, and a request of the engine
-(the conversion of a reading, or the candidates of one phrasal unit put in order by the model) takes 91 ms on average,
-86 ms in the middle and 247 ms at most, on 100 phrasal units of FineWeb-2 text. On an arm64 machine, the NVIDIA DGX
-Spark (20 cores), a request takes 67 ms on average, 62 ms in the middle and 236 ms at most. The package is built for
-plain x86-64 and arm64, without the instructions of a particular CPU, and the large products are shared among up to 4
-threads (`SLM_IME_THREADS`). Version 1, with a conversion server in Java and PyTorch, took 110 to 124 ms per request on
-the same mini PC. The wait is not noticeable in use.
+32 GB of DDR4-3200 memory, no GPU), a conversion takes 91 ms on average, 86 ms in the middle and 247 ms at most, on
+100 phrasal units of FineWeb-2 text. On an arm64 machine, the NVIDIA DGX Spark (20 cores), it takes 67 ms on average,
+62 ms in the middle and 236 ms at most. The wait is not noticeable in use.
 
 ## Integration of Anthy for the alternative kanji
 
