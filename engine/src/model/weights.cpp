@@ -91,7 +91,10 @@ void Weights::read(const std::string &path) {
             count *= static_cast<size_t>(n);
         }
         unsigned long long offset = t.at("offset").get<unsigned long long>();
-        if (offset % alignof(float) != 0 || offset > dataSize || count > (dataSize - offset) / sizeof(float)) {
+        // The data must be inside the file and float-aligned in memory (export_weights.py aligns the data to 64 bytes;
+        // the mapping starts on a page)
+        if (offset > dataSize || count > (dataSize - offset) / sizeof(float) ||
+            reinterpret_cast<std::uintptr_t>(data + offset) % alignof(float) != 0) {
             throw std::runtime_error("a tensor of the weights is cut: " + t.at("name").get<std::string>());
         }
         tensor.data = reinterpret_cast<const float *>(data + offset);

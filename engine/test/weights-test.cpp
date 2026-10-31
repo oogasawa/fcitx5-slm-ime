@@ -57,8 +57,11 @@ static json tinyHeader(size_t *dataBytes) {
     return h;
 }
 
-static void write(const json &header, size_t dataBytes, const char *magic = "SLMIMEW1") {
+// The file as export_weights.py writes it: the header padded with spaces so that the data starts at a multiple of
+// 64 bytes (`misalign` moves the start of the data by that many bytes).
+static void write(const json &header, size_t dataBytes, const char *magic = "SLMIMEW1", size_t misalign = 0) {
     std::string text = header.dump();
+    text.append((64 - (12 + text.size()) % 64) % 64 + misalign, ' ');
     uint32_t length = static_cast<uint32_t>(text.size());
     std::ofstream out(kPath, std::ios::binary);
     out.write(magic, 8);
@@ -97,6 +100,9 @@ int main() {
 
     write(good, bytes - 4);
     expect("the data cut at the end", true);
+
+    write(good, bytes, "SLMIMEW1", 2);
+    expect("data that is not float-aligned in memory", true);
 
     auto damaged = [&](const char *what, const std::function<void(json &)> &damage) {
         json h = good;
