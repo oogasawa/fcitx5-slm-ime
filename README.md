@@ -122,10 +122,22 @@ the upgrade, and log in again to stop the server of version 1 that may still be 
 
 ## Install from source
 
-Build and install the engine as written in "Build and install" of `engine/README.md`; it needs Eigen and the
-development files of fcitx5 and Anthy. Then put the model in `/usr/share/slm-ime/model` (or in the directory named by
-the environment variable `SLM_IME_MODEL_DIR` of fcitx5): `slm-ime-weights.bin` and `tokenizer.json` from the release,
-or made from a checkpoint as in "Export the model".
+The engine needs fcitx5, CMake 3.16 or later, a C++20 compiler, Eigen 3.3 or later, Anthy (`anthy` or
+`anthy-unicode`), `nlohmann-json` 3.2 or later and gettext.
+
+```bash
+# Ubuntu / Debian
+sudo apt install fcitx5 libfcitx5core-dev libfcitx5config-dev libfcitx5utils-dev fcitx5-modules-dev \
+                 nlohmann-json3-dev libeigen3-dev libanthy-dev gettext cmake g++ pkg-config
+cmake -S engine -B build -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+(cd build && ctest)
+sudo cmake --install build
+```
+
+Then put the model in `/usr/share/slm-ime/model` (or in the directory named by the environment variable
+`SLM_IME_MODEL_DIR` of fcitx5): `slm-ime-weights.bin` and `tokenizer.json` from the release, or made from a checkpoint
+as in "Export the model". Restart fcitx5 (`fcitx5 -r -d`) and add the input method in `fcitx5-configtool`.
 
 ```bash
 base=https://github.com/oogasawa/fcitx5-slm-ime/releases/download/v2.0.0
