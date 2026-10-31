@@ -117,6 +117,15 @@ inline const std::vector<ActionInfo> &actionInfos() {
     return infos;
 }
 
+// The group of an operation, as the configuration tool and the table of the keys show them: 0 while typing the
+// reading, 1 while converting, 2 in both (the groups of Action).
+inline int actionGroup(Action action) {
+    if (action <= Action::CaretLast) {
+        return 0;
+    }
+    return action <= Action::ShrinkSegment ? 1 : 2;
+}
+
 // The keys of an operation in a profile. Custom has no keys of its own: they are in the configuration.
 inline const std::vector<std::string> &profileKeys(const ActionInfo &info, KeyProfile profile) {
     static const std::vector<std::string> none;

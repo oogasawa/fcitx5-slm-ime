@@ -29,13 +29,6 @@ std::string keysCell(const std::vector<std::string> &keys,
 
 } // namespace
 
-int keyTableGroup(Action action) {
-    if (action <= Action::CaretLast) {
-        return 0;
-    }
-    return action <= Action::ShrinkSegment ? 1 : 2;
-}
-
 std::string keyTableHtml(const KeyTableText &text, const std::vector<std::vector<std::string>> &inEffect,
                          KeyProfile profile, const std::function<std::string(const std::string &)> &keyName) {
     const KeyProfile profiles[] = {KeyProfile::Default, KeyProfile::MSIME, KeyProfile::ATOK};
@@ -62,8 +55,8 @@ std::string keyTableHtml(const KeyTableText &text, const std::vector<std::vector
     int group = -1;
     const auto &infos = actionInfos();
     for (size_t i = 0; i < infos.size(); i++) {
-        if (keyTableGroup(infos[i].action) != group) {
-            group = keyTableGroup(infos[i].action);
+        if (actionGroup(infos[i].action) != group) {
+            group = actionGroup(infos[i].action);
             html += "<tr><th class=\"group\" colspan=\"5\">" + escaped(groups[group]) + "</th></tr>\n";
         }
         html += "<tr><td>" + escaped(text.translate(infos[i].label)) + "</td>";

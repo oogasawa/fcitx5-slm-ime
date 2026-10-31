@@ -22,9 +22,6 @@ struct KeyTableText {
     std::function<std::string(const char *)> translate; // the labels of the operations and the names of the profiles
 };
 
-// The group of an operation in the table: 0 while typing, 1 while converting, 2 in both (the groups of Action).
-int keyTableGroup(Action action);
-
 // The page. `inEffect` holds the keys in effect of every operation, in the order of actionInfos(); `profile` is the
 // profile in effect, whose column is marked; `keyName` gives the name of a key as the configuration tool shows it.
 std::string keyTableHtml(const KeyTableText &text, const std::vector<std::vector<std::string>> &inEffect,
