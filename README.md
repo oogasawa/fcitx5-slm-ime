@@ -1,5 +1,8 @@
 # fcitx5-slm-ime
 
+> This is the `1.x` branch, kept for fixes of version 1 (a conversion server in Java). The current version is on
+> `main`: version 2, in which the conversion runs inside the engine, with no server.
+
 A Japanese kana-to-kanji input method editor (IME) powered by a small language model (SLM): a character-level
 Transformer (encoder-decoder) of about 60 million parameters that converts hiragana into kanji-kana text. The model
 is small enough to run on a CPU only; no GPU is needed. It runs on Linux, on top of fcitx5.
