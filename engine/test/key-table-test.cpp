@@ -45,10 +45,10 @@ int main() {
     }
     check("the three groups in order", html.find("G-typing") < html.find("G-converting") &&
                                            html.find("G-converting") < html.find("G-both"));
-    check("Convert is in the group while typing", keyTableGroup(Action::Convert) == 0 && keyTableGroup(Action::CaretLast) == 0);
+    check("Convert is in the group while typing", actionGroup(Action::Convert) == 0 && actionGroup(Action::CaretLast) == 0);
     check("the bunsetsu operations are in the group while converting",
-          keyTableGroup(Action::BackToReading) == 1 && keyTableGroup(Action::ShrinkSegment) == 1);
-    check("F6 to F10 and the take-back are in both", keyTableGroup(Action::ToHiragana) == 2 && keyTableGroup(Action::TakeBack) == 2);
+          actionGroup(Action::BackToReading) == 1 && actionGroup(Action::ShrinkSegment) == 1);
+    check("F6 to F10 and the take-back are in both", actionGroup(Action::ToHiragana) == 2 && actionGroup(Action::TakeBack) == 2);
     check("the profile in effect is marked once in the header", count(html, "<th class=\"current\">[MS-IME] *</th>") == 1);
     check("its column is marked in every row", count(html, "<td class=\"current\">") == actionInfos().size());
     check("the keys are escaped", html.find("&lt;space&gt;") != std::string::npos && html.find("<space>") == std::string::npos);

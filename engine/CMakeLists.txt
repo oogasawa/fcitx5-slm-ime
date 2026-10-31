@@ -119,6 +119,13 @@ add_executable(key-table-test test/key-table-test.cpp src/key-table.cpp)
 target_include_directories(key-table-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 add_test(NAME key-table-test COMMAND key-table-test)
 
+# The configuration in three groups: every operation in one group, the keys of the profiles, save and load
+add_executable(slm-ime-config-test test/slm-ime-config-test.cpp)
+target_include_directories(slm-ime-config-test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(slm-ime-config-test PRIVATE Fcitx5::Core)
+target_compile_definitions(slm-ime-config-test PRIVATE FCITX_GETTEXT_DOMAIN="fcitx5-slm-ime" SLM_IME_KEYS_PATH="slm-ime-keys")
+add_test(NAME slm-ime-config-test COMMAND slm-ime-config-test)
+
 # The conversion without the model: readings, history, substitution, the ends put back, Anthy (the tests of the
 # Java conversion server of version 1)
 add_executable(conversion-test test/conversion-test.cpp)

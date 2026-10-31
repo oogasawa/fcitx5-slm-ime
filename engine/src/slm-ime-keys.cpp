@@ -31,7 +31,7 @@ int main(int argc, char **argv) {
     std::vector<std::vector<std::string>> inEffect;
     for (size_t i = 0; i < actionInfos().size(); i++) {
         std::vector<std::string> keys;
-        for (const auto &key : config.keys->keys(i)) {
+        for (const auto &key : configKeys(config, i)) {
             keys.push_back(key.toString());
         }
         inEffect.push_back(keys);

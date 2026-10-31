@@ -166,18 +166,14 @@ public:
         if (now != KeyProfile::Custom) {
             if (now != before) {
                 takeKeysOf(now);
-            } else if (!config_.keys->hasKeysOf(now)) {
+            } else if (!configHasKeysOf(config_, now)) {
                 config_.profile.setValue(KeyProfile::Custom);
             }
         }
         safeSaveAsIni(config_, kConfigFile);
         applyKeys();
     }
-    void takeKeysOf(KeyProfile profile) {
-        SlmImeKeyConfig keys = *config_.keys;
-        keys.takeKeysOf(profile);
-        config_.keys.setValue(keys);
-    }
+    void takeKeysOf(KeyProfile profile) { configTakeKeysOf(config_, profile); }
 
     void keyEvent(const InputMethodEntry & /*entry*/, KeyEvent &event) override {
         auto *ic = event.inputContext();
@@ -1247,7 +1243,7 @@ private:
         keys_.assign(actionInfos().size(), KeyList());
         for (size_t i = 0; i < actionInfos().size(); i++) {
             const auto &info = actionInfos()[i];
-            keys_[static_cast<size_t>(info.action)] = config_.keys->keys(i);
+            keys_[static_cast<size_t>(info.action)] = configKeys(config_, i);
         }
     }
 

@@ -97,11 +97,17 @@ msgstr "ATOK 風"
 msgid "Custom"
 msgstr "カスタム"
 
-msgid "Key binding profile (press OK to put its keys into the list below)"
+msgid "Key binding profile (press OK to put its keys into the lists below)"
 msgstr "キー割り当ての型（選んで OK を押すと、下の一覧がその型のキーに入れ替わります）"
 
-msgid "Keys in effect (changing one makes the profile Custom)"
-msgstr "使われているキー（変えると型はカスタムになります）"
+msgid "Keys while typing the reading (changing one makes the profile Custom)"
+msgstr "読みの入力中のキー（変えると型はカスタムになります）"
+
+msgid "Keys while converting"
+msgstr "変換中のキー"
+
+msgid "Keys in both"
+msgstr "読みの入力中と変換中のどちらでも使うキー"
 
 msgid "Table of the keys of every profile (opens in a browser)"
 msgstr "各型のキー割り当ての一覧（ブラウザで開きます）"
