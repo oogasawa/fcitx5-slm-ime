@@ -357,15 +357,18 @@ private:
         typeLetter(ic, state, key, event);
     }
 
-    // A printable ASCII key without modifiers goes into the reading
+    // A printable ASCII key without modifiers: it goes into the reading
+    static bool isLetter(const Key &key) {
+        if (!key.isSimple() || key.hasModifier()) return false;
+        auto ch = Key::keySymToUnicode(key.sym());
+        return ch > 0 && ch < 128;
+    }
+
     void typeLetter(InputContext *ic, LlmImeState *state, const Key &key, KeyEvent &event) {
-        if (key.isSimple() && !key.hasModifier()) {
-            auto ch = Key::keySymToUnicode(key.sym());
-            if (ch > 0 && ch < 128) {
-                state->buffer_.type(ch);
-                updatePreedit(ic, state);
-                event.filterAndAccept();
-            }
+        if (isLetter(key)) {
+            state->buffer_.type(Key::keySymToUnicode(key.sym()));
+            updatePreedit(ic, state);
+            event.filterAndAccept();
         }
     }
 
@@ -485,6 +488,13 @@ private:
                 event.filterAndAccept();
                 return;
             }
+        }
+
+        // A letter commits the conversion and starts the next reading. Given back to the application instead, the
+        // letter would be put before the conversion, which is still not committed.
+        if (isLetter(key)) {
+            commitConversion(ic, state);
+            typeLetter(ic, state, key, event);
         }
     }
 
