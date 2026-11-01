@@ -70,9 +70,7 @@ length.
 ![Accuracy by the length of the reading: SLM-IME, Mozc and Anthy](docs/accuracy-by-length.svg)
 
 A place to correct is a run of characters where the output differs from the correct text. The upper charts count
-them per sentence; the lower charts show the share of the sentences with nothing to correct. The longer the reading,
-the larger the difference: of the Wikipedia readings of 60 characters or more, this program converts 44 % without a
-place to correct, Mozc 23 % and Anthy 4 %.
+them per sentence; the lower charts show the share of the sentences with nothing to correct.
 
 The training set has about 5.3 million examples, about half from each source: 2.4 million from the Japanese
 Wikipedia and 2.9 million from FineWeb-2. The model has about 60 million parameters.
