@@ -25,11 +25,22 @@ Requires:       slm-ime-model = %{version}-%{release}
 Recommends:     xdg-utils
 
 %description
-An input method engine for fcitx5 that turns typed romaji into hiragana and
-converts the reading to kanji-kana text with a small Transformer model that
-also reads the text before the cursor, computed on the CPU inside the engine.
-The alternative candidates of a phrasal unit come from Anthy, put in order by
-the model. Keys can be set by profile (Default, MS-IME, ATOK) or one by one.
+A Japanese kana-to-kanji input method editor (IME) powered by a small language
+model (SLM): a character-level Transformer (encoder-decoder) of about 60
+million parameters that converts hiragana into kanji-kana text. The model is
+small enough to run on the CPU of an ordinary laptop or mini PC alone; no GPU
+is needed. It runs on Linux, on top of fcitx5.
+
+Conventional Japanese input methods first cut the typed hiragana into words
+with a morphological analyzer, and choose the kanji using that cut. However, a
+correct cut requires understanding the meaning of the whole sentence, and
+understanding the meaning of the whole sentence requires a correct cut: there
+is a circular dependency.
+
+This program avoids this problem by using a small language model directly: the
+small language model reads the typed hiragana and writes the kanji-kana text
+together with the phrasal unit (bunsetsu) boundaries in one pass, with no
+separate morphological analyzer.
 
 %package -n slm-ime-model
 Summary:        Trained model of fcitx5-slm-ime
