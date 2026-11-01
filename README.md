@@ -189,8 +189,9 @@ of every profile" opens a table of the keys of every profile in a browser.
 
 ## Train
 
-The model learns from rows of a reading and the kanji-kana text of that reading. The training data is not
-distributed, so training starts from the Japanese Wikipedia: a large language model (Gemma 4) writes the reading and
+The model learns from rows of a reading and the kanji-kana text of that reading. The pairs of a reading and a
+sentence that trained the model of the releases are published at https://huggingface.co/datasets/oogasawa/fcitx5-slm-ime-training-data. To make
+pairs from the start, training starts from the Japanese Wikipedia: a large language model (Gemma 4) writes the reading and
 the phrasal unit (bunsetsu) boundaries of its sentences, and the small model is trained to reproduce the original
 sentence from the reading and the text before the cursor. Training has six parts. Each part reads the files that the part
 before it wrote.
