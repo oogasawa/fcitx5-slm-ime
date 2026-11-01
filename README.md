@@ -62,6 +62,10 @@ SLM IME engine -> fcitx5 -> application: the preedit, the candidate window and t
 
 ## Accuracy
 
+Compared with Mozc and Anthy, the open-source Japanese IMEs most widely used on Linux, it converts long readings
+with fewer errors, and the difference grows with the length of the reading: of readings of 60 characters or more, it
+converts 44 % without an error, Mozc 23 % and Anthy 4 %.
+
 We compared the conversion with Mozc and Anthy on sentences of the Japanese Wikipedia and of FineWeb-2 (text of web
 pages) that were not used for training and whose readings passed the check with KANJIDIC2, JMdict and Sudachi
 (`prep/clean_readings.py` of the main branch). Every example is a stretch of a sentence as a user types it: the
