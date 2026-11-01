@@ -176,16 +176,16 @@ cp target/slm-ime-server-1.2.0-shaded.jar ~/slm-ime/
 ### Get the model
 
 The server reads a model directory, so the model is placed in `~/slm-ime/model` (not in the `model/` of this
-repository, which is the source of the Transformer). The release `v1.1.0` has the trained model, which 1.2.0 uses
-as it is; to make the model yourself, see "Train".
+repository, which is the source of the Transformer). The release `v1.2.0` has the trained model; to make the model
+yourself, see "Train".
 
 ```bash
 cd ~/slm-ime
-base=https://github.com/oogasawa/fcitx5-slm-ime/releases/download/v1.1.0
-curl -LO $base/fcitx5-slm-ime-model-torchscript-epoch8.zip    # about 700 MB
+base=https://github.com/oogasawa/fcitx5-slm-ime/releases/download/v1.2.0
+curl -LO $base/fcitx5-slm-ime-model-torchscript-1.2.0.zip     # about 700 MB
 curl -LO $base/SHA256SUMS
 sha256sum -c --ignore-missing SHA256SUMS
-unzip fcitx5-slm-ime-model-torchscript-epoch8.zip              # makes model/
+unzip fcitx5-slm-ime-model-torchscript-1.2.0.zip               # makes model/
 ```
 
 The model directory must hold `encoder_m512-12.pt`, `decoder_m512-12.pt` and `tokenizer.json`; with
@@ -205,7 +205,8 @@ libraries to `~/.djl.ai`.
 ```bash
 cd ~/slm-ime
 java --enable-native-access=ALL-UNNAMED -Xmx2g \
-     -Dmodel.context=true -Dmodel.dir=model -Dtokenizer=model/tokenizer.json \
+     -Dmodel.context=true -Dmodel.contextChars=$(cat model/context_chars) \
+     -Dmodel.dir=model -Dtokenizer=model/tokenizer.json \
      -jar slm-ime-server-1.2.0-shaded.jar --server 8190
 ```
 
