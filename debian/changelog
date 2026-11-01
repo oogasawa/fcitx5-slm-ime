@@ -1,3 +1,11 @@
+fcitx5-slm-ime (1.2.1) unstable; urgency=medium
+
+  * A letter typed during a conversion commits the conversion and starts the
+    next reading. It was given back to the application, which put it before
+    the conversion.
+
+ -- Osamu Ogasawara <osamu.ogasawara@gmail.com>  Mon, 02 Nov 2026 03:01:56 +0900
+
 fcitx5-slm-ime (1.2.0) unstable; urgency=medium
 
   * Security: only the user's own engine may use the conversion server. The

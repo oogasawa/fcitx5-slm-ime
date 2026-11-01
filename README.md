@@ -169,8 +169,8 @@ extra candidates (optional). The commands for Ubuntu are in `engine/README.md`.
 ```bash
 mkdir -p ~/slm-ime
 cd djl
-rm -rf target && mvn install            # builds target/slm-ime-server-1.2.0-shaded.jar and runs the tests
-cp target/slm-ime-server-1.2.0-shaded.jar ~/slm-ime/
+rm -rf target && mvn install            # builds target/slm-ime-server-1.2.1-shaded.jar and runs the tests
+cp target/slm-ime-server-1.2.1-shaded.jar ~/slm-ime/
 ```
 
 ### Get the model
@@ -207,7 +207,7 @@ cd ~/slm-ime
 java --enable-native-access=ALL-UNNAMED -Xmx2g \
      -Dmodel.context=true -Dmodel.contextChars=$(cat model/context_chars) \
      -Dmodel.dir=model -Dtokenizer=model/tokenizer.json \
-     -jar slm-ime-server-1.2.0-shaded.jar --server 8190
+     -jar slm-ime-server-1.2.1-shaded.jar --server 8190
 ```
 
 At every start the server writes a new token to `$XDG_DATA_HOME/slm-ime/server-token` (by default
