@@ -1,4 +1,4 @@
-fcitx5-slm-ime (2.0.0) unstable; urgency=medium
+fcitx5-slm-ime (2.0.0-1) unstable; urgency=medium
 
   * The conversion runs inside the engine, in C++ (Eigen) on the CPU: no
     conversion server, no Java and no PyTorch. The slm-ime-server package is
