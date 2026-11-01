@@ -120,14 +120,14 @@ External components that the packages depend on, which `apt` installs:
 
 `apt` installs the declared packages by itself. But these two packages are on GitHub Releases and not in an `apt`
 repository, so `apt` can find `slm-ime-model` only if its file is named on the command line. The release has
-`fcitx5-slm-ime` for two distributions, Ubuntu 24.04 (`~ubuntu24.04`) and Debian 13 (`~deb13`), each for two CPU
+`fcitx5-slm-ime` for two distributions, Ubuntu 24.04 (`ubuntu24.04` in the file name) and Debian 13 (`deb13`), each for two CPU
 architectures, `amd64` and `arm64`, and one `slm-ime-model` for all of them. `dpkg --print-architecture` prints the
 architecture of the machine. Download the `fcitx5-slm-ime` file for the distribution and the architecture, and
 `slm-ime-model`, from <https://github.com/oogasawa/fcitx5-slm-ime/releases> into one directory and run this command in
 it (on Debian 13, `deb13` in place of `ubuntu24.04`):
 
 ```bash
-sudo apt install ./fcitx5-slm-ime_*~ubuntu24.04_$(dpkg --print-architecture).deb ./slm-ime-model_*_all.deb
+sudo apt install ./fcitx5-slm-ime_*ubuntu24.04_$(dpkg --print-architecture).deb ./slm-ime-model_*_all.deb
 ```
 
 Then restart fcitx5 and add `SLM IME` to the input methods with `fcitx5-configtool`.
