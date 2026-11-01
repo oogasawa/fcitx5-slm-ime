@@ -4,7 +4,7 @@
 Name:           fcitx5-slm-ime
 Version:        2.0.0
 Release:        1%{?dist}
-Summary:        Japanese input method for fcitx5 based on a Transformer model
+Summary:        Japanese input method for fcitx5 based on a small Transformer model
 
 License:        Apache-2.0
 URL:            https://github.com/oogasawa/fcitx5-slm-ime
