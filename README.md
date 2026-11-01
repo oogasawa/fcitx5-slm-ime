@@ -117,7 +117,7 @@ upgrade, and restart fcitx5 (or log in again) after the upgrade, because an engi
 
 ## Install with the Debian packages
 
-Tested on Ubuntu 24.04. The program consists of the following parts.
+Built for Ubuntu 24.04 only; for Debian, use version 2.0.0. The program consists of the following parts.
 
 What this program distributes, as three Debian packages, each of which declares the packages that it needs:
 
