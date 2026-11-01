@@ -20,14 +20,6 @@ separate morphological analyzer.
 
 
 
-## Version 1 and version 2
-
-The aim is that anyone can install this program from their distribution, as Debian and Fedora packages. Such packages
-may use only the libraries that the distribution provides. Version 1 computed the model in a server written in Java,
-with a library (DJL) that the distributions do not provide, so its package had to carry DJL, PyTorch and a Java
-runtime of its own. Version 2 computes the same model inside the engine, in C++ with Eigen, which every distribution
-provides. The functions are the same.
-
 ## How it works
 
 ```
@@ -292,6 +284,14 @@ python3 eval/greedy_check.py checkpoints/NAME DATA_DIR
 The script converts the sentences of `test.tsv` with the checkpoint, in the same way as the engine (greedy
 decoding), and prints the character error rate, the share of exact matches, the error rate of the `|` marks alone, and
 a few examples. `eval/compare_cut.py` compares models, Mozc and Anthy on the same rows.
+
+## Version 1 and version 2
+
+The aim is that anyone can install this program from their distribution, as Debian and Fedora packages. Such packages
+may use only the libraries that the distribution provides. Version 1 computed the model in a server written in Java,
+with a library (DJL) that the distributions do not provide, so its package had to carry DJL, PyTorch and a Java
+runtime of its own. Version 2 computes the same model inside the engine, in C++ with Eigen, which every distribution
+provides. The functions are the same.
 
 ## License
 
