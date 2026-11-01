@@ -174,9 +174,9 @@ Then put the model in `/usr/share/slm-ime/model` (or in the directory named by t
 as in "Export the model". Restart fcitx5 (`fcitx5 -r -d`) and add the input method in `fcitx5-configtool`.
 
 ```bash
-curl -LO https://github.com/oogasawa/fcitx5-slm-ime/releases/download/v2.0.0/slm-ime-model-2.0.0.tar.gz
+curl -LO https://github.com/oogasawa/fcitx5-slm-ime/releases/download/v2.0.1/slm-ime-model-2.0.1.tar.gz
 sudo mkdir -p /usr/share/slm-ime/model
-sudo tar -xzf slm-ime-model-2.0.0.tar.gz -C /usr/share/slm-ime/model   # slm-ime-weights.bin, tokenizer.json
+sudo tar -xzf slm-ime-model-2.0.1.tar.gz -C /usr/share/slm-ime/model   # slm-ime-weights.bin, tokenizer.json
 ```
 
 In a source install the engine is still named `llm-ime`, its former name.

@@ -1,3 +1,11 @@
+fcitx5-slm-ime (2.0.1-1) unstable; urgency=medium
+
+  * A letter typed during a conversion commits the conversion and starts the
+    next reading. It was given back to the application, which put it before
+    the conversion.
+
+ -- Osamu Ogasawara <osamu.ogasawara@gmail.com>  Mon, 02 Nov 2026 03:01:10 +0900
+
 fcitx5-slm-ime (2.0.0-1) unstable; urgency=medium
 
   * The conversion runs inside the engine, in C++ (Eigen) on the CPU: no

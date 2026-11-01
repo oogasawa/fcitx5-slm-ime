@@ -2,7 +2,7 @@
 %global _vpath_srcdir engine
 
 Name:           fcitx5-slm-ime
-Version:        2.0.0
+Version:        2.0.1
 Release:        1%{?dist}
 Summary:        Japanese input method for fcitx5 based on a small Transformer model
 
@@ -87,5 +87,8 @@ install -D -m 644 model-release/tokenizer.json %{buildroot}%{_datadir}/slm-ime/m
 %{_datadir}/slm-ime/model/
 
 %changelog
+* Mon Nov 02 2026 Osamu Ogasawara <osamu.ogasawara@gmail.com> - 2.0.1-1
+- A letter typed during a conversion commits it and starts the next reading
+
 * Sat Oct 31 2026 Osamu Ogasawara <osamu.ogasawara@gmail.com> - 2.0.0-1
 - First package for Fedora
