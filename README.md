@@ -2,7 +2,8 @@
 
 A Japanese kana-to-kanji input method editor (IME) powered by a small language model (SLM): a character-level
 Transformer (encoder-decoder) of about 60 million parameters that converts hiragana into kanji-kana text. The model
-is small enough to run on a CPU only; no GPU is needed. It runs on Linux, on top of fcitx5.
+is small enough to run on the CPU of an ordinary laptop or mini PC alone; no GPU is needed. It runs on Linux, on top
+of fcitx5.
 
 
 Conventional Japanese input methods first cut the typed hiragana into words with a morphological analyzer, and choose
