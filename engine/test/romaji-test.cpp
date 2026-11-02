@@ -15,7 +15,20 @@ static void check(const char *what, long got, long want) {
     }
 }
 
+static void checkText(const char *what, const std::string &got, const std::string &want) {
+    if (got != want) {
+        std::printf("FAIL %s: got %s, want %s\n", what, got.c_str(), want.c_str());
+        failures++;
+    }
+}
+
 int main() {
+    // a doubled consonant is っ; doubled digits and punctuation stay as they are
+    checkText("kitte", romajiToHiragana("kitte"), "きって");
+    checkText("400sai", romajiToHiragana("400sai"), "400さい");
+    checkText("1000", romajiToHiragana("1000"), "1000");
+    checkText("..", romajiToHiragana(".."), "。。");
+
     // kaki shows かき; the borders are 0, 2 and 4
     check("kaki left from end", movedByOneKana("kaki", 4, -1), 2);
     check("kaki left from 2", movedByOneKana("kaki", 2, -1), 0);
