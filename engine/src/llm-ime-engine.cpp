@@ -46,9 +46,11 @@ struct Segment {
 // The address of the conversion daemon
 constexpr const char *kDaemonUrl = "http://localhost:8190";
 
-// Takes the candidates of a bunsetsu from the daemon's /api/segment-candidates answer. The daemon puts them in the
-// order the model gives them after the text before the bunsetsu, so its order is taken; the candidates it does not
-// have follow, and the selection stays on the same text.
+// Takes the candidates of a bunsetsu from the daemon's /api/segment-candidates answer. The text shown for the bunsetsu
+// comes first, so that it stays what it is; then the candidates in the order the model gives them after the text
+// before the bunsetsu, so that the next candidate is the model's best other one; then the candidates it does not have.
+// The candidate list is shown only after this (updateConversionDisplay): the list the user sees is the list the keys
+// act on.
 static void takeCandidates(Segment &seg, const nlohmann::json &resp) {
     if (!resp.contains("candidates")) {
         return;
@@ -56,6 +58,10 @@ static void takeCandidates(Segment &seg, const nlohmann::json &resp) {
     std::string selected = seg.candidates.empty() ? "" : seg.candidates[seg.selectedIndex];
     std::vector<std::string> ordered;
     std::set<std::string> seen;
+    if (!selected.empty()) {
+        ordered.push_back(selected);
+        seen.insert(selected);
+    }
     for (auto &c : resp["candidates"]) {
         std::string val = c.get<std::string>();
         if (seen.insert(val).second) {
@@ -68,8 +74,7 @@ static void takeCandidates(Segment &seg, const nlohmann::json &resp) {
         }
     }
     seg.candidates = ordered;
-    auto at = std::find(seg.candidates.begin(), seg.candidates.end(), selected);
-    seg.selectedIndex = at == seg.candidates.end() ? 0 : (int)(at - seg.candidates.begin());
+    seg.selectedIndex = 0;
 }
 
 // A candidate for the candidate list UI
@@ -474,7 +479,10 @@ private:
         // Previous candidate
         if (is(key, Action::PrevCandidate)) {
             auto &seg = state->segments_[state->activeSegment_];
-            if (seg.selectedIndex > 0) {
+            if (!listShown(state)) {
+                fetchLlmCandidates(state);
+                updateConversionDisplay(ic, state);
+            } else if (seg.selectedIndex > 0) {
                 seg.selectedIndex--;
                 updateConversionDisplay(ic, state);
             }
@@ -486,7 +494,11 @@ private:
         for (int n = 1; n <= 9; n++) {
             if (key.check(Key(static_cast<KeySym>(FcitxKey_1 + n - 1)))) {
                 auto &seg = state->segments_[state->activeSegment_];
-                if (n - 1 < (int)seg.candidates.size()) {
+                if (!listShown(state)) {
+                    // No list on the screen yet: show it, and let the user choose from what is shown
+                    fetchLlmCandidates(state);
+                    updateConversionDisplay(ic, state);
+                } else if (n - 1 < (int)seg.candidates.size()) {
                     seg.selectedIndex = n - 1;
                     updateConversionDisplay(ic, state);
                 }
@@ -620,6 +632,9 @@ private:
                         if (!seg.llmFetched && seg.reading == reading) {
                             takeCandidates(seg, *resp);
                             seg.llmFetched = true;
+                            if (state->converting_ && state->activeSegment_ == idx) {
+                                updateConversionDisplay(ic, state);
+                            }
                         }
                     }
                 }
@@ -657,6 +672,7 @@ private:
                 seg.candidates.push_back(seg.reading);
             }
             seg.selectedIndex = 0;
+            seg.llmFetched = true;   // the model's candidates after the text before it: the list can be shown
         } catch (const std::exception &) {
             // Keep reading as sole candidate on error
             seg.candidates.clear();
@@ -1152,6 +1168,13 @@ private:
         }
     }
 
+    // Whether the candidate list of the active bunsetsu is on the screen. It is shown once the model's candidates
+    // are in it: shown before, it would change under the user when they come (the key would pick another word than
+    // the one the user saw). The model's conversion of the whole reading (llmMode_) has only the model's candidates.
+    static bool listShown(const LlmImeState *state) {
+        return state->llmMode_ || state->segments_[state->activeSegment_].llmFetched;
+    }
+
     void updateConversionDisplay(InputContext *ic, LlmImeState *state) {
         auto &panel = ic->inputPanel();
         panel.reset();
@@ -1178,8 +1201,13 @@ private:
         panel.setClientPreedit(preedit);
         panel.setPreedit(preedit);
 
-        // Show candidates for active segment
+        // Show candidates for active segment, once they are in the order they keep (takeCandidates)
         auto &activeSeg = state->segments_[state->activeSegment_];
+        if (!listShown(state)) {
+            ic->updatePreedit();
+            ic->updateUserInterface(UserInterfaceComponent::InputPanel);
+            return;
+        }
         auto candidateList = std::make_unique<CommonCandidateList>();
         candidateList->setPageSize(9);
         candidateList->setLayoutHint(CandidateLayoutHint::Vertical);
