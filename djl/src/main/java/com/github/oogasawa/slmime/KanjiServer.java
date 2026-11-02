@@ -223,7 +223,33 @@ public class KanjiServer {
     /** Writes the reading and the text before the cursor of every request to the log ({@code -Dlog.context=true}). */
     private static final boolean LOG_CONTEXT = Boolean.parseBoolean(System.getProperty("log.context", "false"));
 
+    /**
+     * The model's conversion of the reading after the text before the cursor. A reading too long for one run (the
+     * model reads at most the positions it was exported with) is converted in pieces, joined with '|' between them;
+     * one run with it would fail, and the engine would commit the reading unconverted.
+     */
     private String translate(String input, String context) throws Exception {
+        int[] reading = input.codePoints().toArray();
+        if (reading.length <= LongReading.LONGEST_PIECE) {
+            return translateOne(input, context);
+        }
+        StringBuilder answer = new StringBuilder();
+        StringBuilder before = new StringBuilder(context == null ? "" : context);
+        for (int start = 0; start < reading.length;) {
+            int end = LongReading.pieceEnd(reading, start);
+            String piece = new String(reading, start, end - start);
+            String converted = ImeApi.covered(piece, translateOne(piece, before.toString()));
+            if (answer.length() > 0 && !converted.isEmpty()) {
+                answer.append('|');
+            }
+            answer.append(converted);
+            before.append(converted.replace("|", ""));
+            start = end;
+        }
+        return answer.toString();
+    }
+
+    private String translateOne(String input, String context) throws Exception {
         if (LOG_CONTEXT) {
             log.info("request input=[" + input + "] context(" + context.length() + " chars)=[" + context + "]");
         }
