@@ -78,8 +78,10 @@ inline std::string romajiToHiragana(const std::string &input) {
     std::string result;
     size_t i = 0;
     while (i < input.size()) {
-        // Handle double consonant (sokuon): same consonant twice
+        // Handle double consonant (sokuon): the same consonant letter twice. Only a letter: "400" stays 400, and
+        // ".." stays two full stops.
         if (i + 1 < input.size() && input[i] == input[i + 1] &&
+            input[i] >= 'a' && input[i] <= 'z' &&
             input[i] != 'a' && input[i] != 'i' && input[i] != 'u' &&
             input[i] != 'e' && input[i] != 'o' && input[i] != 'n') {
             result += "っ";
