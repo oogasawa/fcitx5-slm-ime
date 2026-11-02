@@ -99,7 +99,7 @@ public final class AnthyCandidates implements CandidateSource {
                     joined.append(buffer.getString(0));
                 }
             }
-            if (joined.length() > 0) {
+            if (joined.length() > 0 && !hasStraySmallKana(joined.toString())) {
                 found.add(joined.toString());
             }
             int guard = reading.codePointCount(0, reading.length()) + 1;
@@ -113,7 +113,7 @@ public final class AnthyCandidates implements CandidateSource {
             int available = segmentStat.get(ValueLayout.JAVA_INT, 0);
             for (int k = 0; k < available && found.size() < limit; k++) {
                 int written = (int) getSegment.invoke(context, 0, k, buffer, BUFFER_BYTES);
-                if (written > 0) {
+                if (written > 0 && !hasStraySmallKana(buffer.getString(0))) {
                     found.add(buffer.getString(0));
                 }
             }
@@ -122,6 +122,26 @@ public final class AnthyCandidates implements CandidateSource {
             log.warning("Anthy failed for '" + reading + "': " + e);
             return List.of();
         }
+    }
+
+    private static final String SMALL_KANA = "ぁぃぅぇぉゃゅょゎァィゥェォャュョヮ";
+
+    /**
+     * Whether a small kana (ゃ, ょ, ぁ, ...) in the text stands where no kana can carry it: at the start, or after a
+     * kanji. Anthy gives such text when it converted only the start of a reading ("気死ゃ" for きしゃ); it is not a
+     * word.
+     */
+    static boolean hasStraySmallKana(String text) {
+        for (int i = 0; i < text.length(); i++) {
+            if (SMALL_KANA.indexOf(text.charAt(i)) >= 0 && (i == 0 || !isKana(text.charAt(i - 1)))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isKana(char c) {
+        return (c >= 0x3041 && c <= 0x309F) || (c >= 0x30A0 && c <= 0x30FF);
     }
 
     private int segmentCount(MemorySegment stat) throws Throwable {

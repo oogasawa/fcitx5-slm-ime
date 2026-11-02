@@ -64,6 +64,15 @@ msgstr "文節を伸ばす"
 msgid "Make the bunsetsu shorter"
 msgstr "文節を縮める"
 
+msgid "Next page of candidates"
+msgstr "候補の次のページ"
+
+msgid "Previous page of candidates"
+msgstr "候補の前のページ"
+
+msgid "Candidates of one kanji"
+msgstr "単漢字の候補"
+
 msgid "Convert the whole reading with the model only"
 msgstr "読み全体をモデルだけで変換"
 

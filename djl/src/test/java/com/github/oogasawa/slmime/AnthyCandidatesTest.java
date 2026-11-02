@@ -46,4 +46,19 @@ class AnthyCandidatesTest {
     void anEmptyReadingGivesNothing() {
         assertEquals(List.of(), anthyOrSkip().candidates("", 5));
     }
+
+    @Test
+    void aSmallKanaAfterAKanjiIsStray() {
+        assertTrue(AnthyCandidates.hasStraySmallKana("気死ゃ"));
+        assertTrue(AnthyCandidates.hasStraySmallKana("ゃ"));
+        assertTrue(!AnthyCandidates.hasStraySmallKana("記者") && !AnthyCandidates.hasStraySmallKana("きしゃ")
+                && !AnthyCandidates.hasStraySmallKana("ジャズ") && !AnthyCandidates.hasStraySmallKana("言った"));
+    }
+
+    @Test
+    void noCandidateKeepsASmallKanaItsKanjiCutOff() {
+        List<String> candidates = anthyOrSkip().candidates("きしゃ", 60);
+        assertEquals("記者", candidates.get(0));
+        assertTrue(candidates.stream().noneMatch(AnthyCandidates::hasStraySmallKana), candidates.toString());
+    }
 }

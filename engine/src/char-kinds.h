@@ -10,6 +10,17 @@
 
 namespace llmime {
 
+// Whether text is one kanji: one ideograph, or the repetition mark 々 (the candidates of SingleKanji)
+inline bool isOneKanji(const std::string &text) {
+    std::u32string s = conversion::toU32(text);
+    if (s.size() != 1) {
+        return false;
+    }
+    char32_t c = s[0];
+    return (c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3400 && c <= 0x4DBF) || (c >= 0xF900 && c <= 0xFAFF) ||
+           (c >= 0x20000 && c <= 0x2FFFF) || c == U'々';
+}
+
 inline std::string hiraganaToKatakana(const std::string &text) {
     std::u32string s = conversion::toU32(text);
     for (char32_t &c : s) {

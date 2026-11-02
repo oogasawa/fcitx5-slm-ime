@@ -16,6 +16,9 @@ static void check(const char *what, const std::string &got, const std::string &w
 }
 
 int main() {
+    check("one kanji", isOneKanji("高") && isOneKanji("々") && isOneKanji("𠮷") ? "yes" : "no", "yes");
+    check("not one kanji", isOneKanji("高校") || isOneKanji("こ") || isOneKanji("") || isOneKanji("ア") ? "yes" : "no",
+          "no");
     check("katakana", hiraganaToKatakana("きょうはゔぁいおりん。"), "キョウハヴァイオリン。");
     check("hiragana", katakanaToHiragana("キョウハ漢字ー"), "きょうは漢字ー");
     check("half katakana", toHalfKatakana("がっこうのパソコン、ヴ"), "ｶﾞｯｺｳﾉﾊﾟｿｺﾝ､ｳﾞ");
