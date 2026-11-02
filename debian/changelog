@@ -1,9 +1,19 @@
-fcitx5-slm-ime (1.3.0~SNAPSHOT) UNRELEASED; urgency=medium
+fcitx5-slm-ime (1.3.0) unstable; urgency=medium
 
+  * The candidate list opens once the model's candidates are in it, and its
+    order does not change after that. It was shown in the dictionary's order
+    and reordered without being shown again, so Space and the number keys
+    chose another word than the one on the screen.
+  * Page_Down and Page_Up turn the pages of the candidate list; the pages show
+    the numbers 1 to 9, and a number key chooses on the page shown.
+  * F5 shows the candidates of one kanji for the reading of the bunsetsu; F5
+    again or Escape goes back to all the candidates.
+  * Dictionary candidates that keep a small kana cut off from its syllable
+    (気死ゃ for きしゃ) are no longer offered.
   * Digits and punctuation typed twice stay as they are in the reading: 400 was
     put in as 4っ0. Only a doubled consonant letter is a small tsu.
 
- -- Osamu Ogasawara <osamu.ogasawara@gmail.com>  Tue, 03 Nov 2026 03:07:13 +0900
+ -- Osamu Ogasawara <osamu.ogasawara@gmail.com>  Tue, 03 Nov 2026 07:08:23 +0900
 
 fcitx5-slm-ime (1.2.1) unstable; urgency=medium
 
