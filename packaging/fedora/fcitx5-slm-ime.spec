@@ -2,7 +2,7 @@
 %global _vpath_srcdir engine
 
 Name:           fcitx5-slm-ime
-Version:        2.1.0~SNAPSHOT
+Version:        2.1.0
 Release:        1%{?dist}
 Summary:        Japanese input method for fcitx5 based on a small Transformer model
 
@@ -87,7 +87,11 @@ install -D -m 644 model-release/tokenizer.json %{buildroot}%{_datadir}/slm-ime/m
 %{_datadir}/slm-ime/model/
 
 %changelog
-* Tue Nov 03 2026 Osamu Ogasawara <osamu.ogasawara@gmail.com> - 2.1.0~SNAPSHOT-1
+* Tue Nov 03 2026 Osamu Ogasawara <osamu.ogasawara@gmail.com> - 2.1.0-1
+- The candidate list opens once the model's candidates are in it and keeps its order
+- Page_Down and Page_Up turn the pages; number keys choose on the page shown
+- F5 shows the candidates of one kanji
+- Dictionary candidates that keep a cut-off small kana are no longer offered
 - Digits and punctuation typed twice stay as they are in the reading
 
 * Mon Nov 02 2026 Osamu Ogasawara <osamu.ogasawara@gmail.com> - 2.0.1-1
