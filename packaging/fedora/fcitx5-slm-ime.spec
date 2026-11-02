@@ -2,7 +2,7 @@
 %global _vpath_srcdir engine
 
 Name:           fcitx5-slm-ime
-Version:        2.0.1
+Version:        2.1.0~SNAPSHOT
 Release:        1%{?dist}
 Summary:        Japanese input method for fcitx5 based on a small Transformer model
 
@@ -87,6 +87,9 @@ install -D -m 644 model-release/tokenizer.json %{buildroot}%{_datadir}/slm-ime/m
 %{_datadir}/slm-ime/model/
 
 %changelog
+* Tue Nov 03 2026 Osamu Ogasawara <osamu.ogasawara@gmail.com> - 2.1.0~SNAPSHOT-1
+- Digits and punctuation typed twice stay as they are in the reading
+
 * Mon Nov 02 2026 Osamu Ogasawara <osamu.ogasawara@gmail.com> - 2.0.1-1
 - A letter typed during a conversion commits it and starts the next reading
 

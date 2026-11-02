@@ -1,3 +1,10 @@
+fcitx5-slm-ime (2.1.0~SNAPSHOT-1) UNRELEASED; urgency=medium
+
+  * Digits and punctuation typed twice stay as they are in the reading: 400 was
+    put in as 4っ0. Only a doubled consonant letter is a small tsu.
+
+ -- Osamu Ogasawara <osamu.ogasawara@gmail.com>  Tue, 03 Nov 2026 03:06:27 +0900
+
 fcitx5-slm-ime (2.0.1-1) unstable; urgency=medium
 
   * A letter typed during a conversion commits the conversion and starts the
