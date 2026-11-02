@@ -88,4 +88,17 @@ inline char32_t foldWidth(char32_t c) {
     return c;
 }
 
+// Whether a small kana (ゃ, ょ, ぁ, ...) in text stands where no kana can carry it: at the start, or after a kanji. A
+// dictionary that converted only the start of a reading gives such text ("気死ゃ" for きしゃ); it is not a word.
+inline bool hasStraySmallKana(const std::u32string &text) {
+    static const std::u32string small = U"ぁぃぅぇぉゃゅょゎァィゥェォャュョヮ";
+    auto isKana = [](char32_t c) { return (c >= 0x3041 && c <= 0x309F) || (c >= 0x30A0 && c <= 0x30FF); };
+    for (size_t i = 0; i < text.size(); i++) {
+        if (small.find(text[i]) != std::u32string::npos && (i == 0 || !isKana(text[i - 1]))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace llmime::conversion

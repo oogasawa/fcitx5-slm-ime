@@ -25,6 +25,9 @@ enum class Action {
     BackToReading,    // leave the conversion and go back to the reading
     NextCandidate,
     PrevCandidate,
+    NextPage,         // the first candidate of the next page of the candidate list
+    PrevPage,         // the first candidate of the page before
+    SingleKanji,      // the candidates of one kanji only, and back to all of them
     NextSegment,
     PrevSegment,
     FirstSegment,
@@ -87,6 +90,12 @@ inline const std::vector<ActionInfo> &actionInfos() {
          {"space", "Down"}, {"space", "Tab", "Henkan", "Down"}, {"space", "Tab", "Henkan"}},
         {Action::PrevCandidate, "PrevCandidate", "Previous candidate", kConverting,
          {"Up"}, {"Up", "Shift+space", "Shift+Henkan"}, {"Up"}},
+        {Action::NextPage, "NextPage", "Next page of candidates", kConverting,
+         {"Next"}, {"Next"}, {"Next"}},
+        {Action::PrevPage, "PrevPage", "Previous page of candidates", kConverting,
+         {"Page_Up"}, {"Page_Up"}, {"Page_Up"}},
+        {Action::SingleKanji, "SingleKanji", "Candidates of one kanji", kConverting,
+         {"F5"}, {"F5"}, {"F5"}},
         {Action::NextSegment, "NextSegment", "Next bunsetsu", kConverting,
          {"Right"}, {"Right", "Control+d"}, {"Shift+Right"}},
         {Action::PrevSegment, "PrevSegment", "Previous bunsetsu", kConverting,

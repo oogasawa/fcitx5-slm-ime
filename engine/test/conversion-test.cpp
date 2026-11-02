@@ -170,6 +170,12 @@ static void coveredEnds() {
     check("digits", toU8(covered(U"さんてんごばい", U"3.5倍")), "3.5倍");
 }
 
+static void smallKana() {
+    check("a small kana after a kanji is stray", hasStraySmallKana(U"気死ゃ") && hasStraySmallKana(U"ゃ"));
+    check("a small kana after a kana is not", !hasStraySmallKana(U"記者") && !hasStraySmallKana(U"きしゃ") &&
+                                                  !hasStraySmallKana(U"ジャズ") && !hasStraySmallKana(U"言った"));
+}
+
 static void anthy() {
     std::unique_ptr<AnthyCandidates> source;
     try {
@@ -191,6 +197,10 @@ static void anthy() {
     for (auto &c : source->candidates(U"きかいがくしゅうのあるごりずむ", 5)) allLong = allLong && c.size() >= 5;
     check("a long reading stays one bunsetsu", allLong);
     check("an empty reading gives nothing", source->candidates(U"", 5).empty());
+    auto kisha = source->candidates(U"きしゃ", 60);
+    bool noStray = true;
+    for (auto &c : kisha) noStray = noStray && !hasStraySmallKana(c);
+    check("no candidate keeps a small kana its kanji cut off", noStray && !kisha.empty() && kisha[0] == U"記者");
 }
 
 int main() {
@@ -198,6 +208,7 @@ int main() {
     userHistory();
     substitution();
     coveredEnds();
+    smallKana();
     anthy();
     if (failures == 0) {
         std::printf("conversion-test: all passed\n");

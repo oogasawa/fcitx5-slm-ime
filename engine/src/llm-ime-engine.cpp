@@ -41,7 +41,14 @@ struct Segment {
     std::vector<std::string> candidates;
     int selectedIndex = 0;
     bool llmFetched = false;
+    // While the candidates of one kanji are shown (SingleKanji): the candidates and the selection to go back to
+    bool singleKanji = false;
+    std::vector<std::string> allCandidates;
+    int allSelectedIndex = 0;
 };
+
+// The number of candidates on one page of the candidate list
+constexpr int kPageSize = 9;
 
 // Takes the candidates of a bunsetsu from the /api/segment-candidates answer. The text shown for the bunsetsu comes
 // first, so that it stays what it is; then the candidates in the order the model gives them after the text before
@@ -432,7 +439,13 @@ private:
             return;
         }
 
-        // Back to the reading
+        // Back to the reading; from the candidates of one kanji, back to all the candidates first
+        if (is(key, Action::BackToReading) && state->segments_[state->activeSegment_].singleKanji) {
+            leaveSingleKanji(state->segments_[state->activeSegment_]);
+            updateConversionDisplay(ic, state);
+            event.filterAndAccept();
+            return;
+        }
         if (is(key, Action::BackToReading)) {
             state->converting_ = false;
             updatePreedit(ic, state);
@@ -471,6 +484,51 @@ private:
             return;
         }
 
+        // The next or the previous page of the candidate list: its first candidate is selected
+        if (is(key, Action::NextPage) || is(key, Action::PrevPage)) {
+            auto &seg = state->segments_[state->activeSegment_];
+            if (!listShown(state)) {
+                fetchLlmCandidates(state);
+            } else {
+                int page = seg.selectedIndex / kPageSize + (is(key, Action::NextPage) ? 1 : -1);
+                int pages = ((int)seg.candidates.size() + kPageSize - 1) / kPageSize;
+                if (page >= 0 && page < pages) {
+                    seg.selectedIndex = page * kPageSize;
+                }
+            }
+            updateConversionDisplay(ic, state);
+            event.filterAndAccept();
+            return;
+        }
+
+        // The candidates of one kanji, and back to all of them
+        if (is(key, Action::SingleKanji)) {
+            auto &seg = state->segments_[state->activeSegment_];
+            if (seg.singleKanji) {
+                leaveSingleKanji(seg);
+            } else {
+                if (!listShown(state)) {
+                    fetchLlmCandidates(state);
+                }
+                std::vector<std::string> kanji;
+                for (auto &c : singleKanjiOf(state, state->activeSegment_)) {
+                    if (isOneKanji(c) && std::find(kanji.begin(), kanji.end(), c) == kanji.end()) {
+                        kanji.push_back(c);
+                    }
+                }
+                if (!kanji.empty()) {
+                    seg.allCandidates = seg.candidates;
+                    seg.allSelectedIndex = seg.selectedIndex;
+                    seg.candidates = std::move(kanji);
+                    seg.selectedIndex = 0;
+                    seg.singleKanji = true;
+                }
+            }
+            updateConversionDisplay(ic, state);
+            event.filterAndAccept();
+            return;
+        }
+
         // Previous candidate
         if (is(key, Action::PrevCandidate)) {
             auto &seg = state->segments_[state->activeSegment_];
@@ -493,9 +551,13 @@ private:
                     // No list on the screen yet: show it, and let the user choose from what is shown
                     fetchLlmCandidates(state);
                     updateConversionDisplay(ic, state);
-                } else if (n - 1 < (int)seg.candidates.size()) {
-                    seg.selectedIndex = n - 1;
-                    updateConversionDisplay(ic, state);
+                } else {
+                    // The number on the page shown: the page is the one of the selected candidate
+                    int index = seg.selectedIndex / kPageSize * kPageSize + n - 1;
+                    if (index < (int)seg.candidates.size()) {
+                        seg.selectedIndex = index;
+                        updateConversionDisplay(ic, state);
+                    }
                 }
                 event.filterAndAccept();
                 return;
@@ -668,6 +730,7 @@ private:
             }
             seg.selectedIndex = 0;
             seg.llmFetched = true;   // the model's candidates after the text before it: the list can be shown
+            seg.singleKanji = false;
         } catch (const std::exception &) {
             // Keep reading as sole candidate on error
             seg.candidates.clear();
@@ -1163,6 +1226,35 @@ private:
         }
     }
 
+    // Every candidate of the dictionary for the reading of a bunsetsu, not only the first ones the list shows: the
+    // kanji of a reading like こう are more than a hundred. The model puts the first of them in order after the text
+    // before the bunsetsu. Without an answer, the candidates the bunsetsu has.
+    std::vector<std::string> singleKanjiOf(LlmImeState *state, int idx) {
+        auto &seg = state->segments_[idx];
+        std::string context = state->textBefore_;
+        for (int i = 0; i < idx; i++) {
+            auto &s = state->segments_[i];
+            context += s.candidates[s.selectedIndex];
+        }
+        try {
+            json resp = conversion_.post("/api/segment-candidates",
+                                         {{"input", seg.reading}, {"context", context}, {"n", 1000}});
+            if (resp.contains("candidates")) {
+                return resp["candidates"].get<std::vector<std::string>>();
+            }
+        } catch (const std::exception &) {
+        }
+        return seg.candidates;
+    }
+
+    // Back from the candidates of one kanji to all of them, with the selection there before
+    static void leaveSingleKanji(Segment &seg) {
+        seg.candidates = std::move(seg.allCandidates);
+        seg.selectedIndex = seg.allSelectedIndex;
+        seg.allCandidates.clear();
+        seg.singleKanji = false;
+    }
+
     // Whether the candidate list of the active bunsetsu is on the screen. It is shown once the model's candidates
     // are in it: shown before, it would change under the user when they come (the key would pick another word than
     // the one the user saw). The model's conversion of the whole reading (llmMode_) has only the model's candidates.
@@ -1204,14 +1296,17 @@ private:
             return;
         }
         auto candidateList = std::make_unique<CommonCandidateList>();
-        candidateList->setPageSize(9);
+        candidateList->setPageSize(kPageSize);
         candidateList->setLayoutHint(CandidateLayoutHint::Vertical);
         for (int i = 0; i < (int)activeSeg.candidates.size(); i++) {
             candidateList->append<LlmCandidate>(
                 Text(activeSeg.candidates[i]),
                 state->activeSegment_, i);
         }
+        // The numbers 1 to 9 on each page: the number keys choose on the page shown
+        candidateList->setSelectionKey(Key::keyListFromString("1 2 3 4 5 6 7 8 9"));
         if (activeSeg.selectedIndex < (int)candidateList->totalSize()) {
+            candidateList->setPage(activeSeg.selectedIndex / kPageSize);
             candidateList->setGlobalCursorIndex(activeSeg.selectedIndex);
         }
         panel.setCandidateList(std::move(candidateList));

@@ -55,7 +55,7 @@ std::vector<std::u32string> AnthyCandidates::candidates(const std::u32string &re
     anthy_context_t context = ctx(context_);
     std::vector<std::u32string> found;
     auto add = [&found](std::u32string text) {
-        if (!text.empty() && std::find(found.begin(), found.end(), text) == found.end()) {
+        if (!text.empty() && !hasStraySmallKana(text) && std::find(found.begin(), found.end(), text) == found.end()) {
             found.push_back(std::move(text));
         }
     };
