@@ -14,7 +14,7 @@ This program avoids this problem by using a small language model directly: the s
 hiragana and writes the kanji-kana text together with the phrasal unit (bunsetsu) boundaries in one pass, with no
 separate morphological analyzer.
 
-https://github.com/user-attachments/assets/e86c3513-ebf9-4d5c-8be0-557629955aa0
+https://github.com/user-attachments/assets/8806d070-e978-4a14-920b-7db2cb070582
 
 Typing a Japanese passage at an ordinary speed: one Space converts each sentence, and a wrong phrasal unit is fixed
 by choosing from the candidate list.
