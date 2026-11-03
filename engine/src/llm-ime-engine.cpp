@@ -1231,12 +1231,41 @@ private:
                 corrections.push_back(correction);
             }
             if (!corrections.empty()) {
-                json req = {{"input", pending.input}, {"output", pending.output}, {"corrections", corrections}};
-                conversion_.post("/api/record", req);
+                learnInBackground({{"input", pending.input}, {"output", pending.output}, {"corrections", corrections}});
             }
         } catch (...) {
             // Ignore record failures
         }
+    }
+
+    // Has the choices learned on another thread: learning writes the history file, which may wait for the disk. One
+    // thread at a time takes them in the order they were made, because the order decides which choice wins a tie.
+    void learnInBackground(json request) {
+        std::lock_guard<std::mutex> lock(learnMutex_);
+        toLearn_.push_back(std::move(request));
+        if (learning_) {
+            return;
+        }
+        learning_ = true;
+        runInBackground([this]() {
+            for (;;) {
+                json request;
+                {
+                    std::lock_guard<std::mutex> lock(learnMutex_);
+                    if (toLearn_.empty()) {
+                        learning_ = false;
+                        return;
+                    }
+                    request = std::move(toLearn_.front());
+                    toLearn_.pop_front();
+                }
+                try {
+                    conversion_.post("/api/record", request);
+                } catch (...) {
+                    // Ignore record failures
+                }
+            }
+        });
     }
 
     // Select a continuation candidate and commit it
@@ -1676,6 +1705,9 @@ private:
     std::mutex backgroundMutex_;
     std::condition_variable backgroundDone_;
     int backgroundRunning_ = 0;  // work running on other threads (runInBackground)
+    std::mutex learnMutex_;
+    std::deque<json> toLearn_;  // choices to be learned, in the order they were made
+    bool learning_ = false;     // a thread takes them now
     std::vector<std::string> continuationCandidates_;  // current continuation candidates
     int continuationIndex_ = 0;    // currently highlighted continuation candidate
 };
