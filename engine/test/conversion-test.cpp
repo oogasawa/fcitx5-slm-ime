@@ -146,6 +146,13 @@ static void substitution() {
     check("the bunsetsu next to the choice are kept", firstTexts(kept), "新しいモデル|がデプロイ|された");
     check("their readings", joined(kept.readings), "あたらしいもでる|がでぷろい|された");
 
+    UserHistory iru;
+    iru.learn(U"いるの", U"要るの");
+    check("a choice is not put where the model writes the ending of the word before in kana",
+          firstTexts(substituteHistory(U"つくっているのかな", split("作っているのかな"), iru)), "作っているのかな");
+    check("at the start of a bunsetsu it is",
+          firstTexts(substituteHistory(U"かぎがいるのかな", split("鍵が|いるのかな"), iru)), "鍵が|要るのかな");
+
     UserHistory me;
     me.learn(U"め", U"目");
     check("a short reading is not looked for inside a longer one",

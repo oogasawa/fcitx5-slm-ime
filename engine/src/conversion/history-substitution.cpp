@@ -3,6 +3,8 @@
 #include "conversion/reading-aligner.h"
 #include "conversion/text.h"
 
+#include <algorithm>
+
 namespace llmime::conversion {
 
 namespace {
@@ -75,6 +77,17 @@ Substituted substituteHistory(const std::u32string &reading, const std::vector<s
     while (piece < pieces.size()) {
         const UserHistory::Match *match = matchStartingAt(matches, begin[piece]);
         long last = match == nullptr ? -1 : pieceEndingAt(begin, match->end, piece);
+        if (last >= 0 && piece > 0 && segmentOf[piece - 1] == segmentOf[piece]) {
+            // Inside a bunsetsu, kana the model writes as kana are the ending of the word before (いるの in
+            // 作っているのかな): a choice the user made for another word of the same reading does not go there.
+            std::u32string original;
+            for (size_t i = piece; i <= static_cast<size_t>(last); i++) {
+                original += pieces[i];
+            }
+            if (std::all_of(original.begin(), original.end(), isHiragana)) {
+                last = -1;
+            }
+        }
         if (last >= 0) {
             for (size_t s = segmentOf[piece]; s < segmentOf[static_cast<size_t>(last)]; s++) {
                 joinedWithNext[s] = true;

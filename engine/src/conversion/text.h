@@ -74,6 +74,8 @@ inline bool isKana(char32_t c) {
            c == U'ゝ' || c == U'ゞ';
 }
 
+inline bool isHiragana(char32_t c) { return (c >= U'ぁ' && c <= U'ゖ') || c == U'ゝ' || c == U'ゞ'; }
+
 inline char32_t toHiragana(char32_t c) { return c >= U'ァ' && c <= U'ヶ' ? c - 0x60 : c; }
 
 // The character as NFKC would make it, for the characters the alignment meets: full-width ASCII and the
