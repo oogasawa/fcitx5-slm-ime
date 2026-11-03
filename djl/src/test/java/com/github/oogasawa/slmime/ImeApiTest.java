@@ -148,6 +148,19 @@ class ImeApiTest {
     }
 
     @Test
+    void aChoiceIsNotPutWhereTheModelWritesTheEndingOfTheWordBeforeInKana() {
+        UserHistory history = UserHistory.inMemory();
+        history.learn("いるの", "要るの");
+        ImeApi inside = new ImeApi((kana, context) -> "作っているのかな", CandidateSource.NONE, history);
+        assertEquals("作っているのかな", candidatesOf(parse(call(() -> inside.segmentConvert(
+                "{\"input\":\"つくっているのかな\"}"))).getAsJsonArray("segments").get(0).getAsJsonObject()).get(0));
+        ImeApi atStart = new ImeApi((kana, context) -> "鍵が|いるのかな", CandidateSource.NONE, history);
+        var segments = parse(call(() -> atStart.segmentConvert("{\"input\":\"かぎがいるのかな\"}")))
+                .getAsJsonArray("segments");
+        assertEquals("要るのかな", candidatesOf(segments.get(1).getAsJsonObject()).get(0));
+    }
+
+    @Test
     void aShortReadingIsNotLookedForInsideALongerOne() {
         UserHistory history = UserHistory.inMemory();
         history.learn("め", "目");

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -73,6 +74,47 @@ public final class UserHistory {
             } catch (IOException e) {
                 log.warning("The history " + file + " cannot be written: " + e.getMessage());
             }
+        }
+    }
+
+    /**
+     * Forgets every time the user chose {@code chosen} for {@code reading}: the user turned it down where it was put
+     * in. The file is written again without it.
+     */
+    public synchronized void forget(String reading, String chosen) {
+        LinkedHashMap<String, Integer> candidates = choices.get(reading);
+        if (candidates == null || candidates.remove(chosen) == null) {
+            return;
+        }
+        if (candidates.isEmpty()) {
+            choices.remove(reading);
+        }
+        rewrite();
+    }
+
+    /**
+     * Each choice is written as many times as it was made, the choices of a reading in the order they were made last,
+     * so that reading the file again gives the same counts and the same latest choices. Written to another file
+     * first, which then takes the place of the old one, so that a crash never leaves half a history.
+     */
+    private void rewrite() {
+        if (file == null) {
+            return;
+        }
+        StringBuilder text = new StringBuilder();
+        for (Map.Entry<String, LinkedHashMap<String, Integer>> reading : choices.entrySet()) {
+            for (Map.Entry<String, Integer> choice : reading.getValue().entrySet()) {
+                for (int i = 0; i < choice.getValue(); i++) {
+                    text.append(reading.getKey()).append('\t').append(choice.getKey()).append('\n');
+                }
+            }
+        }
+        Path temporary = file.resolveSibling(file.getFileName() + ".new");
+        try {
+            Files.writeString(temporary, text, StandardCharsets.UTF_8);
+            Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            log.warning("The history " + file + " cannot be written: " + e.getMessage());
         }
     }
 

@@ -141,9 +141,12 @@ public final class ImeApi {
     }
 
     /**
-     * The choice of the user. {@code {"corrections":[{"reading":..,"chosen":..},..]}} lists the bunsetsu for
-     * which the user took another candidate than the first; each is kept in the history. The model does not
-     * learn from it. Anything else in the body, or a body that cannot be read, changes nothing.
+     * The choice of the user. {@code {"corrections":[{"reading":..,"chosen":..,"turnedDown":..},..]}} lists the
+     * bunsetsu for which the user took another candidate than the first; each is kept in the history. The model
+     * does not learn from it. {@code turnedDown} is the text offered for the reading (absent when not known): an
+     * earlier choice that was put into it and that the user took out is forgotten, so that one correction undoes a
+     * choice made by mistake, however often it was made. Anything else in the body, or a body that cannot be read,
+     * changes nothing.
      */
     public String record(String body) {
         try {
@@ -151,13 +154,32 @@ public final class ImeApi {
             if (request.has("corrections") && request.get("corrections").isJsonArray()) {
                 for (var element : request.getAsJsonArray("corrections")) {
                     JsonObject correction = element.getAsJsonObject();
-                    history.learn(text(correction, "reading"), text(correction, "chosen"));
+                    String reading = text(correction, "reading");
+                    String chosen = text(correction, "chosen");
+                    String turnedDown = text(correction, "turnedDown");
+                    if (!turnedDown.isEmpty()) {
+                        forgetTurnedDown(reading, chosen, turnedDown);
+                    }
+                    history.learn(reading, chosen);
                 }
             }
         } catch (RuntimeException e) {
             // A body that is not what the engine sends is ignored.
         }
         return "{}";
+    }
+
+    private void forgetTurnedDown(String reading, String chosen, String turnedDown) {
+        if (history.preferred(reading).filter(turnedDown::equals).isPresent()) {
+            history.forget(reading, turnedDown);
+        }
+        // A choice put in for a stretch of the reading (要るの in 要るのかな) that the user's text does not keep
+        for (UserHistory.Match m : history.matchesIn(reading, HistorySubstitution.SHORTEST_READING)) {
+            if (m.end() - m.start() < reading.length() && turnedDown.contains(m.chosen())
+                    && !chosen.contains(m.chosen())) {
+                history.forget(reading.substring(m.start(), m.end()), m.chosen());
+            }
+        }
     }
 
     /** Prefix predictions; none. */

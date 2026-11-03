@@ -141,6 +141,17 @@ public:
         std::chrono::steady_clock::time_point at;  // when it was committed
     };
     LastCommit lastCommit_;
+    // The bunsetsu of the last commit, sent to be learned only when the user goes on: a commit that is taken back,
+    // or erased with BackSpace right after it, was a mistake and is not learned.
+    struct PendingRecord {
+        bool valid = false;
+        std::string input;
+        std::string output;
+        std::vector<Choice> offered;
+        std::vector<Choice> committed;
+        size_t erased = 0;  // characters erased from its end since
+    };
+    PendingRecord pendingRecord_;
 
     // The keys wait here while the model computes an answer one of them needs, and are handled in order when it
     // comes. The answers of the key being handled, by request.
@@ -228,8 +239,8 @@ public:
             auto key = event.key();
             if (is(key, Action::TakeBack)) {
                 if (state->lastCommit_.valid && !state->converting_ && state->buffer_.size() == 0 &&
-                    continuationCandidates_.empty()) {
-                    takeBackLastCommit(ic, state);
+                    continuationCandidates_.empty() && takeBackLastCommit(ic, state)) {
+                    state->pendingRecord_.valid = false;
                 }
                 state->lastCommit_.valid = false;
                 event.filterAndAccept();
@@ -237,6 +248,12 @@ public:
             }
             if (!key.isModifier()) {
                 state->lastCommit_.valid = false;
+                if (key.check(Key(FcitxKey_BackSpace)) && state->pendingRecord_.valid && !state->converting_ &&
+                    state->buffer_.size() == 0 && continuationCandidates_.empty()) {
+                    state->pendingRecord_.erased++;
+                } else {
+                    sendRecord(ic, state);
+                }
             }
         }
 
@@ -296,6 +313,7 @@ public:
         state->answers_.clear();
         resetState(ic, state);
         state->lastCommit_.valid = false;
+        sendRecord(ic, state);
     }
 
     // A request of the model whose answer is not there yet. Not a std::exception, so that the handlers of failed
@@ -1175,34 +1193,56 @@ private:
                               std::chrono::steady_clock::now()};
         ic->commitString(result);
 
-        // Record what the user changed asynchronously (fire and forget). "corrections" lists the segments the user
-        // changed: a candidate other than the first was taken, or a border between segments was moved (the first
-        // candidate of the new reading is then taken as it is). The reading itself may be what the user took
-        // (the result equals the hiragana): that is a change as well, so the result is not compared with the reading.
-        try {
+        sendRecord(ic, state);
+        if (!isPrivate(ic)) {
             std::vector<Choice> committed;
             for (auto &seg : state->segments_) {
-                const std::string &text = seg.candidates[seg.selectedIndex];
-                // Letters put in with F9 or F10 are not learned: the next time the reading should be converted
-                if (!onlyLetters(text)) {
-                    committed.push_back({seg.reading, text});
-                }
+                committed.push_back({seg.reading, seg.candidates[seg.selectedIndex]});
             }
-            json corrections = json::array();
-            for (auto &changed : changedChoices(state->offered_, committed)) {
-                corrections.push_back({{"reading", changed.reading}, {"chosen", changed.text}});
-            }
-            if (!corrections.empty() && !isPrivate(ic)) {
-                json req = {{"input", hiragana}, {"output", result}, {"corrections", corrections}};
-                httpClient_.post("/api/record", req);
-            }
-        } catch (...) {
-            // Ignore record failures
+            state->pendingRecord_ = {true, hiragana, result, state->offered_, std::move(committed), 0};
         }
 
         rememberCommitted(ic, state, result);
 
         resetState(ic, state);
+    }
+
+    // Sends what the user changed in the last commit to be learned, leaving out the bunsetsu erased since.
+    // "corrections" lists the segments the user changed: a candidate other than the first was taken, or a border
+    // between segments was moved (the first candidate of the new reading is then taken as it is). The reading itself
+    // may be what the user took (the result equals the hiragana): that is a change as well, so the result is not
+    // compared with the reading. "turnedDown" is the text offered for the same reading, so that an earlier choice
+    // put into it and taken out by the user is forgotten.
+    void sendRecord(InputContext *ic, LlmImeState *state) {
+        LlmImeState::PendingRecord pending = std::move(state->pendingRecord_);
+        state->pendingRecord_ = {};
+        if (!pending.valid || isPrivate(ic)) {
+            return;
+        }
+        try {
+            std::vector<Choice> committed;
+            for (auto &c : notErased(pending.committed, pending.erased)) {
+                // Letters put in with F9 or F10 are not learned: the next time the reading should be converted
+                if (!onlyLetters(c.text)) {
+                    committed.push_back(c);
+                }
+            }
+            json corrections = json::array();
+            for (auto &changed : changedChoices(pending.offered, committed)) {
+                json correction = {{"reading", changed.reading}, {"chosen", changed.text}};
+                std::string down = turnedDown(pending.offered, changed);
+                if (!down.empty()) {
+                    correction["turnedDown"] = down;
+                }
+                corrections.push_back(correction);
+            }
+            if (!corrections.empty()) {
+                json req = {{"input", pending.input}, {"output", pending.output}, {"corrections", corrections}};
+                httpClient_.post("/api/record", req);
+            }
+        } catch (...) {
+            // Ignore record failures
+        }
     }
 
     // Select a continuation candidate and commit it
@@ -1496,6 +1536,7 @@ private:
             EventType::InputContextFocusOut, EventWatcherPhase::Default, [this](Event &event) {
                 auto *ic = static_cast<InputContextEvent &>(event).inputContext();
                 ic->propertyFor(&factory_)->lastCommit_.valid = false;
+                sendRecord(ic, ic->propertyFor(&factory_));
             }));
         eventHandlers_.push_back(instance->watchEvent(
             EventType::InputContextCursorRectChanged, EventWatcherPhase::Default, [this](Event &event) {

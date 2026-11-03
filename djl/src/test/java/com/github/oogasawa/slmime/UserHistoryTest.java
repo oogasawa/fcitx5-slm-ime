@@ -84,6 +84,35 @@ class UserHistoryTest {
     }
 
     @Test
+    void aChoiceThatTheUserTookOutIsForgottenHoweverOftenItWasMade(@TempDir Path dir) {
+        Path file = dir.resolve("history.tsv");
+        UserHistory history = UserHistory.inFile(file);
+        ImeApi api = new ImeApi((kana, context) -> kana, CandidateSource.NONE, history);
+        for (int i = 0; i < 3; i++) {
+            history.learn("いるの", "要るの");
+        }
+        history.learn("でぷろい", "デプロイ");
+        api.record("{\"corrections\":[{\"reading\":\"いるのかな\",\"chosen\":\"いるのかな\","
+                + "\"turnedDown\":\"要るのかな\"}]}");
+        assertTrue(history.preferred("いるの").isEmpty());
+        assertEquals("デプロイ", history.preferred("でぷろい").orElse(""));
+        UserHistory reread = UserHistory.inFile(file);
+        assertTrue(reread.preferred("いるの").isEmpty());
+        assertEquals("デプロイ", reread.preferred("でぷろい").orElse(""));
+        assertEquals("いるのかな", reread.preferred("いるのかな").orElse(""));
+    }
+
+    @Test
+    void aChoiceTurnedDownForTheWholeReadingIsForgotten() {
+        UserHistory history = UserHistory.inMemory();
+        ImeApi api = new ImeApi((kana, context) -> kana, CandidateSource.NONE, history);
+        history.learn("きしゃ", "汽車");
+        history.learn("きしゃ", "汽車");
+        api.record("{\"corrections\":[{\"reading\":\"きしゃ\",\"chosen\":\"記者\",\"turnedDown\":\"汽車\"}]}");
+        assertEquals("記者", history.preferred("きしゃ").orElse(""));
+    }
+
+    @Test
     void aRecordWithoutCorrectionsOrWithBrokenJsonChangesNothing() {
         UserHistory history = UserHistory.inMemory();
         ImeApi api = new ImeApi((kana, context) -> kana, CandidateSource.NONE, history);

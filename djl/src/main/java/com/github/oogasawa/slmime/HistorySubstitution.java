@@ -66,6 +66,12 @@ final class HistorySubstitution {
         while (piece < pieces.size()) {
             UserHistory.Match match = matchStartingAt(matches, begin[piece]);
             int last = match == null ? -1 : pieceEndingAt(begin, match.end(), piece);
+            if (last >= 0 && piece > 0 && segmentOf.get(piece - 1).equals(segmentOf.get(piece))
+                    && String.join("", pieces.subList(piece, last + 1)).chars().allMatch(HistorySubstitution::isHiragana)) {
+                // Inside a bunsetsu, kana the model writes as kana are the ending of the word before (いるの in
+                // 作っているのかな): a choice the user made for another word of the same reading does not go there.
+                last = -1;
+            }
             if (last >= 0) {
                 for (int s = segmentOf.get(piece); s < segmentOf.get(last); s++) {
                     joinedWithNext[s] = true;
@@ -132,6 +138,10 @@ final class HistorySubstitution {
             }
         }
         return -1;
+    }
+
+    private static boolean isHiragana(int c) {
+        return (c >= 'ぁ' && c <= 'ゖ') || c == 'ゝ' || c == 'ゞ';
     }
 
     /** The text cut into the units whose reading is told apart: a run of kanji, and every other character alone. */
