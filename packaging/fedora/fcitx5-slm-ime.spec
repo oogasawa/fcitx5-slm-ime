@@ -2,7 +2,7 @@
 %global _vpath_srcdir engine
 
 Name:           fcitx5-slm-ime
-Version:        2.1.0
+Version:        2.2.0~SNAPSHOT
 Release:        1%{?dist}
 Summary:        Japanese input method for fcitx5 based on a small Transformer model
 
@@ -87,6 +87,13 @@ install -D -m 644 model-release/tokenizer.json %{buildroot}%{_datadir}/slm-ime/m
 %{_datadir}/slm-ime/model/
 
 %changelog
+* Tue Nov 03 2026 Osamu Ogasawara <osamu.ogasawara@gmail.com> - 2.2.0~SNAPSHOT-1
+- A choice of the user is not put where the model writes the ending of the word before (作って要るのかな)
+- A commit taken back or erased with BackSpace right after it is not learned
+- A choice the user takes out where it was put in is forgotten, however often it was made
+- The model never runs on the fcitx5 main thread
+- The weights are read on big-endian machines as well
+
 * Tue Nov 03 2026 Osamu Ogasawara <osamu.ogasawara@gmail.com> - 2.1.0-1
 - The candidate list opens once the model's candidates are in it and keeps its order
 - Page_Down and Page_Up turn the pages; number keys choose on the page shown

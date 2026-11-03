@@ -1,3 +1,18 @@
+fcitx5-slm-ime (2.2.0~SNAPSHOT-1) UNRELEASED; urgency=medium
+
+  * A choice of the user is not put where the model writes the ending of the
+    word before in kana: a choice learned for いるの (要るの) made
+    作っているのかな into 作って要るのかな.
+  * A commit taken back with Ctrl+Shift+Insert, or erased with BackSpace right
+    after it, is not learned.
+  * When the user takes another text where an earlier choice was put in, that
+    choice is forgotten however often it was made.
+  * The model never runs on the fcitx5 main thread: a key that needs it waits
+    for it on another thread, and the keys typed meanwhile wait behind it.
+  * The weights are read on big-endian machines as well.
+
+ -- Osamu Ogasawara <osamu.ogasawara@gmail.com>  Tue, 03 Nov 2026 23:00:00 +0900
+
 fcitx5-slm-ime (2.1.0-1) unstable; urgency=medium
 
   * The candidate list opens once the model's candidates are in it, and its
