@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <chrono>
 #include <condition_variable>
+#include <deque>
+#include <map>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -139,6 +141,13 @@ public:
         std::chrono::steady_clock::time_point at;  // when it was committed
     };
     LastCommit lastCommit_;
+
+    // The keys wait here while the model computes an answer one of them needs, and are handled in order when it
+    // comes. The answers of the key being handled, by request.
+    bool waiting_ = false;
+    unsigned waitId_ = 0;  // counts the waits, so that an answer for a wait given up (reset) is dropped
+    std::deque<Key> queued_;
+    std::map<std::string, std::optional<nlohmann::json>> answers_;
 };
 
 class LlmImeEngine : public InputMethodEngineV2 {
@@ -192,10 +201,25 @@ public:
     }
     void takeKeysOf(KeyProfile profile) { configTakeKeysOf(config_, profile); }
 
+    // The model never runs on this thread, which handles the keys of every application: a key that needs an answer
+    // of the model waits for it, and the keys typed meanwhile wait behind it (see handleOrWait).
     void keyEvent(const InputMethodEntry & /*entry*/, KeyEvent &event) override {
         auto *ic = event.inputContext();
         auto *state = ic->propertyFor(&factory_);
+        if (state->waiting_ || !state->queued_.empty()) {
+            if (!event.isRelease()) {
+                state->queued_.push_back(event.key());
+            }
+            event.filterAndAccept();
+            return;
+        }
+        if (!handleOrWait(ic, state, event)) {
+            state->queued_.push_back(event.key());
+            event.filterAndAccept();
+        }
+    }
 
+    void handleKey(InputContext *ic, LlmImeState *state, KeyEvent &event) {
         // The take-back key (Ctrl+Shift+Insert) right after a commit takes the commit back; any other key forgets the
         // commit.
         // The key never goes to the application, even when there is nothing to take back, because the applications
@@ -265,9 +289,134 @@ public:
                InputContextEvent &event) override {
         auto *ic = event.inputContext();
         auto *state = ic->propertyFor(&factory_);
+        // The keys waiting for the model are given up with the reading they were typed into
+        state->waiting_ = false;
+        state->waitId_++;
+        state->queued_.clear();
+        state->answers_.clear();
         resetState(ic, state);
         state->lastCommit_.valid = false;
     }
+
+    // A request of the model whose answer is not there yet. Not a std::exception, so that the handlers of failed
+    // requests let it through up to handleOrWait.
+    struct Waiting {
+        std::string path;
+        json request;
+    };
+
+    // The answer of the model to a request made while handling a key: the answer already fetched for this key,
+    // or Waiting thrown to fetch it on another thread. A failed request throws std::runtime_error, as post() does.
+    // Outside the handling of a key the request is made here.
+    json ask(LlmImeState *state, const std::string &path, const json &request) {
+        if (!handlingKey_) {
+            return httpClient_.post(path, request);
+        }
+        auto it = state->answers_.find(path + request.dump());
+        if (it == state->answers_.end()) {
+            throw Waiting{path, request};
+        }
+        if (!it->second) {
+            throw std::runtime_error("the conversion failed");
+        }
+        return *it->second;
+    }
+
+    // What a key may change before it finds that it needs the model, put back when it waits. The committed text and
+    // the last commit are not in it: they change only after the model has answered.
+    struct Conversion {
+        std::string input;
+        size_t cursor;
+        std::vector<Segment> segments;
+        int activeSegment;
+        bool converting;
+        unsigned conversionId;
+        bool llmMode;
+        std::string fullHiragana;
+        std::string textBefore;
+        std::vector<Choice> offered;
+    };
+
+    static Conversion conversionOf(LlmImeState *state) {
+        return {state->buffer_.userInput(), state->buffer_.cursor(), state->segments_, state->activeSegment_,
+                state->converting_, state->conversionId_, state->llmMode_, state->fullHiragana_,
+                state->textBefore_, state->offered_};
+    }
+
+    static void restore(LlmImeState *state, Conversion c) {
+        state->buffer_.clear();
+        state->buffer_.type(c.input);
+        state->buffer_.setCursor(c.cursor);
+        state->segments_ = std::move(c.segments);
+        state->activeSegment_ = c.activeSegment;
+        state->converting_ = c.converting;
+        state->conversionId_ = c.conversionId;
+        state->llmMode_ = c.llmMode;
+        state->fullHiragana_ = std::move(c.fullHiragana);
+        state->textBefore_ = std::move(c.textBefore);
+        state->offered_ = std::move(c.offered);
+    }
+
+    // Handles the key; false when it needs an answer of the model that is not there yet. The conversion is then as it
+    // was before the key, the request runs on another thread, and the key is handled again from the start when the
+    // answer comes (resume), with every answer fetched for it so far. A key that needs two answers waits twice.
+    bool handleOrWait(InputContext *ic, LlmImeState *state, KeyEvent &event) {
+        Conversion before = conversionOf(state);
+        handlingKey_ = true;
+        try {
+            handleKey(ic, state, event);
+            handlingKey_ = false;
+            state->answers_.clear();
+            return true;
+        } catch (Waiting &w) {
+            handlingKey_ = false;
+            restore(state, std::move(before));
+            state->waiting_ = true;
+            unsigned id = ++state->waitId_;
+            std::string name = w.path + w.request.dump();
+            auto ref = ic->watch();
+            runInBackground([this, ref, id, name, w = std::move(w)]() {
+                std::optional<json> answer;
+                try {
+                    answer = httpClient_.post(w.path, w.request);
+                } catch (const std::exception &) {
+                    // answered as failed: the key then does what it does when the conversion fails
+                }
+                dispatcher_.schedule([this, ref, id, name, answer = std::move(answer)]() {
+                    auto *ic = ref.get();
+                    if (ic == nullptr) {
+                        return;
+                    }
+                    auto *state = ic->propertyFor(&factory_);
+                    if (!state->waiting_ || state->waitId_ != id) {
+                        return;
+                    }
+                    state->waiting_ = false;
+                    state->answers_[name] = std::move(answer);
+                    resume(ic, state);
+                });
+            });
+            return false;
+        }
+    }
+
+    // Handles the keys that waited, in order, until one of them waits again. A key the engine does not take goes to
+    // the application, as it would have gone when it was typed.
+    void resume(InputContext *ic, LlmImeState *state) {
+        while (!state->queued_.empty()) {
+            Key key = state->queued_.front();
+            KeyEvent event(ic, key, false);
+            if (!handleOrWait(ic, state, event)) {
+                return;
+            }
+            state->queued_.pop_front();
+            if (!event.filtered()) {
+                ic->forwardKey(key, false);
+                ic->forwardKey(key, true);
+            }
+        }
+    }
+
 
 private:
     void handleInputKey(InputContext *ic, LlmImeState *state,
@@ -644,7 +793,7 @@ private:
             }
 
             json req = {{"input", seg.reading}, {"context", context}, {"n", 5}};
-            json resp = httpClient_.post("/api/segment-candidates", req);
+            json resp = ask(state, "/api/segment-candidates", req);
             takeCandidates(seg, resp);
         } catch (const std::exception &) {
             // LLM fetch failed; keep existing Mozc candidates
@@ -722,7 +871,7 @@ private:
             }
 
             json req = {{"input", seg.reading}, {"context", context}, {"n", 5}};
-            json resp = httpClient_.post("/api/segment-candidates", req);
+            json resp = ask(state, "/api/segment-candidates", req);
 
             if (resp.contains("candidates")) {
                 seg.candidates.clear();
@@ -766,7 +915,7 @@ private:
             if (!context.empty()) {
                 req["context"] = context;
             }
-            json resp = httpClient_.post("/api/segment-convert", req);
+            json resp = ask(state, "/api/segment-convert", req);
             if (!resp.contains("segments")) return;
 
             std::vector<Segment> fresh;
@@ -905,7 +1054,7 @@ private:
             if (!context.empty()) {
                 req["context"] = context;
             }
-            json resp = httpClient_.post("/api/segment-convert", req);
+            json resp = ask(state, "/api/segment-convert", req);
 
             state->segments_.clear();
             state->activeSegment_ = 0;
@@ -967,7 +1116,7 @@ private:
             if (!context.empty()) {
                 req["context"] = context;
             }
-            json resp = httpClient_.post("/api/convert", req);
+            json resp = ask(state, "/api/convert", req);
 
             state->segments_.clear();
             state->activeSegment_ = 0;
@@ -1242,8 +1391,8 @@ private:
             context += s.candidates[s.selectedIndex];
         }
         try {
-            json resp = httpClient_.post("/api/segment-candidates",
-                                         {{"input", seg.reading}, {"context", context}, {"n", 1000}});
+            json resp = ask(state, "/api/segment-candidates",
+                            {{"input", seg.reading}, {"context", context}, {"n", 1000}});
             if (resp.contains("candidates")) {
                 return resp["candidates"].get<std::vector<std::string>>();
             }
@@ -1488,6 +1637,7 @@ private:
     EventDispatcher dispatcher_;
     std::vector<std::unique_ptr<HandlerTableEntry<EventHandler>>> eventHandlers_;
     bool prefetching_ = false;                          // a fetch of candidates runs in the background
+    bool handlingKey_ = false;                          // a key is handled now: ask() does not make the request here
     TrackableObjectReference<InputContext> prefetchNext_;  // the input context to fetch for when it ends
     std::mutex backgroundMutex_;
     std::condition_variable backgroundDone_;
