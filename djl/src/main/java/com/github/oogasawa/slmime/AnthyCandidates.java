@@ -81,7 +81,7 @@ public final class AnthyCandidates implements CandidateSource {
     }
 
     @Override
-    public synchronized List<String> candidates(String reading, int limit) {
+    public List<String> candidates(String reading, int limit) {
         if (reading == null || reading.isEmpty() || limit <= 0) {
             return List.of();
         }

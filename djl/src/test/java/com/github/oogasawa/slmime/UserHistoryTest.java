@@ -77,6 +77,7 @@ class UserHistoryTest {
         ImeApi api = new ImeApi((kana, context) -> "バイ|は", (reading, limit) -> List.of("倍", "杯"), history);
         assertEquals("{}", api.record("{\"input\":\"ばいは\",\"output\":\"倍は\","
                 + "\"corrections\":[{\"reading\":\"ばい\",\"chosen\":\"倍\"}]}"));
+        api.awaitLearning();
         JsonObject response = JsonParser.parseString(api.segmentConvert("{\"input\":\"ばいは\"}")).getAsJsonObject();
         var first = response.getAsJsonArray("segments").get(0).getAsJsonObject().getAsJsonArray("candidates");
         assertEquals(List.of("倍", "バイ", "杯"), first.asList().stream().map(e -> e.getAsString()).toList());
@@ -94,6 +95,7 @@ class UserHistoryTest {
         history.learn("でぷろい", "デプロイ");
         api.record("{\"corrections\":[{\"reading\":\"いるのかな\",\"chosen\":\"いるのかな\","
                 + "\"turnedDown\":\"要るのかな\"}]}");
+        api.awaitLearning();
         assertTrue(history.preferred("いるの").isEmpty());
         assertEquals("デプロイ", history.preferred("でぷろい").orElse(""));
         UserHistory reread = UserHistory.inFile(file);
@@ -109,6 +111,7 @@ class UserHistoryTest {
         history.learn("きしゃ", "汽車");
         history.learn("きしゃ", "汽車");
         api.record("{\"corrections\":[{\"reading\":\"きしゃ\",\"chosen\":\"記者\",\"turnedDown\":\"汽車\"}]}");
+        api.awaitLearning();
         assertEquals("記者", history.preferred("きしゃ").orElse(""));
     }
 
@@ -117,7 +120,9 @@ class UserHistoryTest {
         UserHistory history = UserHistory.inMemory();
         ImeApi api = new ImeApi((kana, context) -> kana, CandidateSource.NONE, history);
         assertEquals("{}", api.record("{\"input\":\"あ\",\"output\":\"亜\"}"));
+        api.awaitLearning();
         assertEquals("{}", api.record("not json"));
+        api.awaitLearning();
         assertEquals(0, history.size());
     }
 }

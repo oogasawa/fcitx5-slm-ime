@@ -235,6 +235,7 @@ class ImeApiTest {
     @Test
     void thePassiveRequestsGetEmptyAnswers() {
         assertEquals("{}", api.record("{}"));
+        api.awaitLearning();
         assertEquals("[]", api.predict());
         assertTrue(parse(api.continuation("{}")).getAsJsonArray("candidates").isEmpty());
     }

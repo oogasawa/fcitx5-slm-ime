@@ -3,6 +3,7 @@ package com.github.oogasawa.slmime;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.scivicslab.pojoactor.core.ActorRef;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -49,7 +50,8 @@ public final class ImeApi {
 
     private final Converter converter;
     private final CandidateSource alternatives;
-    private final UserHistory history;
+    /** The user's earlier choices, an actor: learning runs there, after the answer is sent. */
+    private final ActorRef<UserHistory> history;
     private final Scorer scorer;
     /** How much the order of the source of the other candidates counts against the scores of the model. */
     private final double sourceWeight;
@@ -82,6 +84,11 @@ public final class ImeApi {
      */
     public ImeApi(Converter converter, CandidateSource alternatives, UserHistory history, Scorer scorer,
                   double sourceWeight) {
+        this(converter, alternatives, new ActorRef<>("history", history), scorer, sourceWeight);
+    }
+
+    public ImeApi(Converter converter, CandidateSource alternatives, ActorRef<UserHistory> history, Scorer scorer,
+                  double sourceWeight) {
         this.converter = converter;
         this.alternatives = alternatives;
         this.history = history;
@@ -94,8 +101,7 @@ public final class ImeApi {
         JsonObject request = JsonParser.parseString(body).getAsJsonObject();
         String input = text(request, "input");
         String context = text(request, "context");
-        HistorySubstitution.Result answer = HistorySubstitution.apply(input,
-                segmentsOf(input, covered(input, converter.convert(input, context))), history);
+        HistorySubstitution.Result answer = withHistory(input, covered(input, converter.convert(input, context)));
         JsonArray array = new JsonArray();
         for (int i = 0; i < answer.texts().size(); i++) {
             JsonObject segment = new JsonObject();
@@ -114,8 +120,7 @@ public final class ImeApi {
         JsonObject request = JsonParser.parseString(body).getAsJsonObject();
         String input = text(request, "input");
         String context = text(request, "context");
-        HistorySubstitution.Result answer = HistorySubstitution.apply(input,
-                segmentsOf(input, covered(input, converter.convert(input, context))), history);
+        HistorySubstitution.Result answer = withHistory(input, covered(input, converter.convert(input, context)));
         String own = String.join("", answer.texts());
         JsonObject response = new JsonObject();
         response.add("candidates", strings(withAlternatives(own, String.join("", answer.originals()), input,
@@ -157,10 +162,7 @@ public final class ImeApi {
                     String reading = text(correction, "reading");
                     String chosen = text(correction, "chosen");
                     String turnedDown = text(correction, "turnedDown");
-                    if (!turnedDown.isEmpty()) {
-                        forgetTurnedDown(reading, chosen, turnedDown);
-                    }
-                    history.learn(reading, chosen);
+                    history.tell(h -> h.takeCorrection(reading, chosen, turnedDown));
                 }
             }
         } catch (RuntimeException e) {
@@ -169,17 +171,15 @@ public final class ImeApi {
         return "{}";
     }
 
-    private void forgetTurnedDown(String reading, String chosen, String turnedDown) {
-        if (history.preferred(reading).filter(turnedDown::equals).isPresent()) {
-            history.forget(reading, turnedDown);
-        }
-        // A choice put in for a stretch of the reading (要るの in 要るのかな) that the user's text does not keep
-        for (UserHistory.Match m : history.matchesIn(reading, HistorySubstitution.SHORTEST_READING)) {
-            if (m.end() - m.start() < reading.length() && turnedDown.contains(m.chosen())
-                    && !chosen.contains(m.chosen())) {
-                history.forget(reading.substring(m.start(), m.end()), m.chosen());
-            }
-        }
+    /** Waits until the choices recorded so far are learned (for the tests: {@link #record} does not wait). */
+    void awaitLearning() {
+        Actors.ask(history, h -> null);
+    }
+
+    /** The model's answer cut into bunsetsu, with the user's earlier choices put in, as the history is now. */
+    private HistorySubstitution.Result withHistory(String input, String modelOutput) {
+        List<String> segments = segmentsOf(input, modelOutput);
+        return Actors.ask(history, h -> HistorySubstitution.apply(input, segments, h));
     }
 
     /** Prefix predictions; none. */
@@ -197,8 +197,8 @@ public final class ImeApi {
     private String candidates(String body) throws Exception {
         JsonObject request = JsonParser.parseString(body).getAsJsonObject();
         String input = text(request, "input");
-        String joined = String.join("", HistorySubstitution.apply(input,
-                segmentsOf(input, covered(input, converter.convert(input, text(request, "context")))), history).texts());
+        String joined = String.join("",
+                withHistory(input, covered(input, converter.convert(input, text(request, "context")))).texts());
         JsonObject response = new JsonObject();
         response.add("candidates", strings(List.of(joined)));
         response.addProperty("output", joined);
@@ -218,7 +218,7 @@ public final class ImeApi {
     private List<String> withAlternatives(String own, String original, String reading, String context, int wanted)
             throws Exception {
         Set<String> first = new LinkedHashSet<>();
-        history.preferred(reading).ifPresent(first::add);
+        Actors.ask(history, h -> h.preferred(reading)).ifPresent(first::add);
         first.add(own);
         first.add(original);
         List<String> others = new ArrayList<>();

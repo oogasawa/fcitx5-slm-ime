@@ -23,6 +23,9 @@ import java.util.logging.Logger;
  * itself is not changed. The choice made most often wins; among equal counts, the latest one wins.
  * The history is a text file with one {@code reading TAB chosen text} per line, appended to at every choice
  * and read again at start-up; deleting the file forgets everything.</p>
+ *
+ * <p>It is used by one thread at a time: the server holds it in an actor, which takes the requests in the order they
+ * came.</p>
  */
 public final class UserHistory {
 
@@ -62,7 +65,7 @@ public final class UserHistory {
     }
 
     /** Records that the user chose {@code chosen} for the bunsetsu typed as {@code reading}. */
-    public synchronized void learn(String reading, String chosen) {
+    public void learn(String reading, String chosen) {
         if (!acceptable(reading) || !acceptable(chosen)) {
             return;
         }
@@ -81,7 +84,7 @@ public final class UserHistory {
      * Forgets every time the user chose {@code chosen} for {@code reading}: the user turned it down where it was put
      * in. The file is written again without it.
      */
-    public synchronized void forget(String reading, String chosen) {
+    public void forget(String reading, String chosen) {
         LinkedHashMap<String, Integer> candidates = choices.get(reading);
         if (candidates == null || candidates.remove(chosen) == null) {
             return;
@@ -118,8 +121,30 @@ public final class UserHistory {
         }
     }
 
+    /**
+     * The user took {@code chosen} for the bunsetsu typed as {@code reading}, turning down {@code turnedDown}, the
+     * text offered for it (empty when not known). An earlier choice that was put into the offered text and that the
+     * user took out is forgotten, however often it was made, so that one correction undoes a choice made by
+     * mistake; then the choice is learned.
+     */
+    public void takeCorrection(String reading, String chosen, String turnedDown) {
+        if (turnedDown != null && !turnedDown.isEmpty()) {
+            if (preferred(reading).filter(turnedDown::equals).isPresent()) {
+                forget(reading, turnedDown);
+            }
+            // A choice put in for a stretch of the reading (要るの in 要るのかな) that the user's text does not keep
+            for (Match m : matchesIn(reading, HistorySubstitution.SHORTEST_READING)) {
+                if (m.end() - m.start() < reading.length() && turnedDown.contains(m.chosen())
+                        && !chosen.contains(m.chosen())) {
+                    forget(reading.substring(m.start(), m.end()), m.chosen());
+                }
+            }
+        }
+        learn(reading, chosen);
+    }
+
     /** The text the user chose most often for {@code reading}, if any. */
-    public synchronized Optional<String> preferred(String reading) {
+    public Optional<String> preferred(String reading) {
         LinkedHashMap<String, Integer> candidates = choices.get(reading);
         if (candidates == null) {
             return Optional.empty();
@@ -146,7 +171,7 @@ public final class UserHistory {
      *
      * @return the matches in the order of their position in {@code reading}
      */
-    public synchronized List<Match> matchesIn(String reading, int shortest) {
+    public List<Match> matchesIn(String reading, int shortest) {
         List<Match> found = new ArrayList<>();
         for (String key : choices.keySet()) {
             if (key.length() < shortest) {
@@ -171,7 +196,7 @@ public final class UserHistory {
     }
 
     /** The number of readings that have a choice. */
-    public synchronized int size() {
+    public int size() {
         return choices.size();
     }
 

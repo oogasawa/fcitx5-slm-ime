@@ -42,6 +42,13 @@
              DJL auto-downloads to ~/.djl.ai/pytorch/2.5.1/ on first run.
              The machine that runs the server needs internet access for this download. -->
 
+        <!-- The model, the history and Anthy are actors (KanjiServer) -->
+        <dependency>
+            <groupId>com.scivicslab</groupId>
+            <artifactId>pojo-actor</artifactId>
+            <version>4.6.0</version>
+        </dependency>
+
         <!-- Logging (DJL uses slf4j) -->
         <dependency>
             <groupId>org.slf4j</groupId>
