@@ -265,7 +265,21 @@ std::u32string Converter::convert(const std::u32string &input, const std::u32str
     return joined(substituteHistory(input, modelSegments(input, translate(input, context)), history_).texts);
 }
 
-void Converter::record(const std::u32string &reading, const std::u32string &chosen) {
+void Converter::record(const std::u32string &reading, const std::u32string &chosen,
+                       const std::u32string &turnedDown) {
+    if (!turnedDown.empty()) {
+        auto preferred = history_.preferred(reading);
+        if (preferred && *preferred == turnedDown) {
+            history_.forget(reading, turnedDown);
+        }
+        // A choice put in for a stretch of the reading (要るの in 要るのかな) that the user's text does not keep
+        for (const auto &m : history_.matchesIn(reading, kShortestHistoryReading)) {
+            if (m.end - m.start < reading.size() && turnedDown.find(m.chosen) != std::u32string::npos &&
+                chosen.find(m.chosen) == std::u32string::npos) {
+                history_.forget(reading.substr(m.start, m.end - m.start), m.chosen);
+            }
+        }
+    }
     history_.learn(reading, chosen);
 }
 
@@ -292,7 +306,7 @@ nlohmann::json Converter::post(const std::string &path, const nlohmann::json &re
         if (it != request.end() && it->is_array()) {
             for (const auto &correction : *it) {
                 if (correction.is_object()) {
-                    record(text(correction, "reading"), text(correction, "chosen"));
+                    record(text(correction, "reading"), text(correction, "chosen"), text(correction, "turnedDown"));
                 }
             }
         }

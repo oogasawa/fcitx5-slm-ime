@@ -45,8 +45,10 @@ public:
                                                   size_t wanted, std::u32string *output = nullptr);
     // One candidate for the whole text.
     std::u32string convert(const std::u32string &input, const std::u32string &context);
-    // The user took `chosen` for the bunsetsu typed as `reading`.
-    void record(const std::u32string &reading, const std::u32string &chosen);
+    // The user took `chosen` for the bunsetsu typed as `reading`, turning down `turnedDown`, the text offered for
+    // it (empty when not known). An earlier choice that was put into the offered text and that the user took out
+    // is forgotten: one correction undoes a choice made by mistake, however often it was made.
+    void record(const std::u32string &reading, const std::u32string &chosen, const std::u32string &turnedDown = U"");
 
     // The requests of the engine as the conversion server of version 1 took them: /api/segment-convert,
     // /api/segment-candidates, /api/convert, /api/record, /api/continue, /api/predict.

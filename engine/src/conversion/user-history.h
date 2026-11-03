@@ -24,6 +24,10 @@ public:
     // Records that the user chose `chosen` for the bunsetsu typed as `reading`.
     void learn(const std::u32string &reading, const std::u32string &chosen);
 
+    // Forgets every time the user chose `chosen` for `reading`: the user turned it down where it was put in. The file
+    // is written again without it.
+    void forget(const std::u32string &reading, const std::u32string &chosen);
+
     // The text the user chose most often for `reading`, if any.
     std::optional<std::u32string> preferred(const std::u32string &reading) const;
 
@@ -49,6 +53,7 @@ private:
     };
     std::optional<std::u32string> preferredLocked(const std::u32string &reading) const;
     void remember(const std::u32string &reading, const std::u32string &chosen);
+    void rewrite() const;
 
     std::string path_;
     std::map<std::u32string, std::map<std::u32string, Choice>> choices_;

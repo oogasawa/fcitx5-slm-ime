@@ -3,7 +3,9 @@
 #include "conversion/text.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <fstream>
+#include <tuple>
 
 namespace llmime::conversion {
 
@@ -38,6 +40,49 @@ void UserHistory::learn(const std::u32string &reading, const std::u32string &cho
         std::ofstream out(path_, std::ios::app);
         out << toU8(reading) << '\t' << toU8(chosen) << '\n';
     }
+}
+
+void UserHistory::forget(const std::u32string &reading, const std::u32string &chosen) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = choices_.find(reading);
+    if (it == choices_.end() || it->second.erase(chosen) == 0) {
+        return;
+    }
+    if (it->second.empty()) {
+        choices_.erase(it);
+    }
+    rewrite();
+}
+
+// Each choice is written as many times as it was made, in the order it was made last, so that reading the file
+// again gives the same counts and the same latest choices. Written to another file first, which then takes the
+// place of the old one, so that a crash never leaves half a history.
+void UserHistory::rewrite() const {
+    if (path_.empty()) {
+        return;
+    }
+    std::vector<std::tuple<long, const std::u32string *, const std::u32string *, int>> lines;
+    for (const auto &[reading, texts] : choices_) {
+        for (const auto &[text, choice] : texts) {
+            lines.emplace_back(choice.order, &reading, &text, choice.count);
+        }
+    }
+    std::sort(lines.begin(), lines.end(),
+              [](const auto &a, const auto &b) { return std::get<0>(a) < std::get<0>(b); });
+    std::string temporary = path_ + ".new";
+    {
+        std::ofstream out(temporary, std::ios::trunc);
+        for (const auto &[order, reading, text, count] : lines) {
+            for (int i = 0; i < count; i++) {
+                out << toU8(*reading) << '\t' << toU8(*text) << '\n';
+            }
+        }
+        if (!out) {
+            std::remove(temporary.c_str());
+            return;
+        }
+    }
+    std::rename(temporary.c_str(), path_.c_str());
 }
 
 std::optional<std::u32string> UserHistory::preferred(const std::u32string &reading) const {

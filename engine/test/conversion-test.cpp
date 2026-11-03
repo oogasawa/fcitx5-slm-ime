@@ -120,6 +120,25 @@ static void userHistory() {
     check("the history file", all, "ばい\t倍\n");
     unlink(path);
 
+    fd = mkstemp(path);
+    close(fd);
+    {
+        UserHistory mistaken{std::string(path)};
+        mistaken.learn(U"いるの", U"要るの");
+        mistaken.learn(U"こうせい", U"構成");
+        mistaken.learn(U"いるの", U"要るの");
+        mistaken.learn(U"いるの", U"いるの");
+        mistaken.forget(U"いるの", U"要るの");
+        check("a forgotten choice is not returned however often it was made",
+              mistaken.preferred(U"いるの").value_or(U"") == U"いるの");
+        mistaken.forget(U"こうせい", U"構成");
+        check("a reading with no choice left is gone", !mistaken.preferred(U"こうせい").has_value());
+    }
+    UserHistory reread{std::string(path)};
+    check("the forgotten choice stays forgotten after a restart",
+          reread.preferred(U"いるの").value_or(U"") == U"いるの" && reread.size() == 1);
+    unlink(path);
+
     UserHistory bad;
     bad.learn(U"", U"倍");
     bad.learn(U"ばい", U"");

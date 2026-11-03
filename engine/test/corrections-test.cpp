@@ -47,6 +47,20 @@ int main() {
     // nothing is known about what was offered
     check("nothing offered", changedChoices({}, {{"どうで", "銅で"}}), {});
 
+    // a commit erased at once
+    const std::vector<Choice> committed = {{"なにが", "何が"}, {"いるの", "要るの"}};
+    check("nothing erased", notErased(committed, 0), committed);
+    check("the end of the last bunsetsu erased", notErased(committed, 1), {{"なにが", "何が"}});
+    check("the last bunsetsu erased", notErased(committed, 3), {{"なにが", "何が"}});
+    check("into the bunsetsu before", notErased(committed, 4), {});
+    check("more than the commit", notErased(committed, 9), {});
+
+    // the text offered for the same reading is the one turned down
+    if (turnedDown(offered, {"しょう", "しょう"}) != "賞" || !turnedDown(offered, {"どうでしょう", "どうでしょう"}).empty()) {
+        std::printf("FAIL turnedDown\n");
+        failures++;
+    }
+
     if (failures == 0) {
         std::printf("corrections-test: all passed\n");
     }
