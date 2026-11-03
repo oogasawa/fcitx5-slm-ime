@@ -5,7 +5,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <fstream>
 #include <functional>
 #include <string>
@@ -57,18 +59,31 @@ static json tinyHeader(size_t *dataBytes) {
     return h;
 }
 
+// A number as export_weights.py writes it, little-endian on any machine.
+static void putLittleEndian(std::ofstream &out, uint32_t n) {
+    char b[4] = {static_cast<char>(n & 0xFF), static_cast<char>((n >> 8) & 0xFF), static_cast<char>((n >> 16) & 0xFF),
+                 static_cast<char>((n >> 24) & 0xFF)};
+    out.write(b, 4);
+}
+
+// The n-th float of the data: all different, so that a float read with its bytes in the wrong order is told.
+static float nth(size_t n) { return 0.01f + 0.0001f * static_cast<float>(n % 97); }
+
 // The file as export_weights.py writes it: the header padded with spaces so that the data starts at a multiple of
 // 64 bytes (`misalign` moves the start of the data by that many bytes).
 static void write(const json &header, size_t dataBytes, const char *magic = "SLMIMEW1", size_t misalign = 0) {
     std::string text = header.dump();
     text.append((64 - (12 + text.size()) % 64) % 64 + misalign, ' ');
-    uint32_t length = static_cast<uint32_t>(text.size());
     std::ofstream out(kPath, std::ios::binary);
     out.write(magic, 8);
-    out.write(reinterpret_cast<const char *>(&length), 4);
+    putLittleEndian(out, static_cast<uint32_t>(text.size()));
     out.write(text.data(), static_cast<std::streamsize>(text.size()));
-    std::vector<float> data(dataBytes / sizeof(float), 0.01f);
-    out.write(reinterpret_cast<const char *>(data.data()), static_cast<std::streamsize>(dataBytes));
+    for (size_t i = 0; i < dataBytes / sizeof(float); i++) {
+        float f = nth(i);
+        uint32_t bits;
+        std::memcpy(&bits, &f, 4);
+        putLittleEndian(out, bits);
+    }
 }
 
 static int failures = 0;
@@ -94,6 +109,20 @@ int main() {
 
     write(good, bytes);
     expect("a good file", false);
+
+    // the floats are read as they were written, on a big-endian machine as well
+    {
+        Weights w(kPath);
+        size_t first = good["tensors"][4]["offset"].get<size_t>() / sizeof(float);  // out_proj.bias
+        const Tensor &bias = w.get("out_proj.bias", {6});
+        for (size_t i = 0; i < 6; i++) {
+            if (bias.data[i] != nth(first + i)) {
+                std::printf("FAIL float %zu of out_proj.bias is %g, written %g\n", i, bias.data[i], nth(first + i));
+                failures++;
+                break;
+            }
+        }
+    }
 
     write(good, bytes, "NOTAFILE");
     expect("another magic", true);
@@ -125,9 +154,8 @@ int main() {
     // a header length that points past the end of the file
     {
         std::ofstream out(kPath, std::ios::binary);
-        uint32_t length = 0xFFFFFFF0u;
         out.write("SLMIMEW1", 8);
-        out.write(reinterpret_cast<const char *>(&length), 4);
+        putLittleEndian(out, 0xFFFFFFF0u);
         out.write("{}", 2);
     }
     expect("a header longer than the file", true);

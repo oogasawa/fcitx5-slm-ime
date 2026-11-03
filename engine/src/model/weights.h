@@ -1,6 +1,7 @@
 #pragma once
 // The weights of the conversion model, read from the file that export_weights.py writes. The file is mapped into
-// memory, so the weights are shared between the processes that read the same file and are not copied.
+// memory, so the weights are shared between the processes that read the same file and are not copied. Its numbers
+// are little-endian; on a big-endian machine the mapping is private and the bytes of every float are turned there.
 #include <cstddef>
 #include <map>
 #include <string>

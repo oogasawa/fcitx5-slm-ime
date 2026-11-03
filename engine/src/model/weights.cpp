@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <bit>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -17,6 +18,23 @@ namespace {
 constexpr char kMagic[8] = {'S', 'L', 'M', 'I', 'M', 'E', 'W', '1'};
 // No dimension of the model is larger than this; larger numbers in a header are damage.
 constexpr int kLargestDimension = 1 << 24;
+// The numbers of the file are little-endian, whatever machine wrote it.
+constexpr bool kTurnBytes = std::endian::native == std::endian::big;
+
+uint32_t littleEndian32(const char *p) {
+    const auto *b = reinterpret_cast<const unsigned char *>(p);
+    return static_cast<uint32_t>(b[0]) | static_cast<uint32_t>(b[1]) << 8 | static_cast<uint32_t>(b[2]) << 16 |
+           static_cast<uint32_t>(b[3]) << 24;
+}
+
+// The floats of a tensor, written little-endian, in the order of this machine.
+void turnBytes(float *data, size_t count) {
+    auto *words = reinterpret_cast<uint32_t *>(data);
+    for (size_t i = 0; i < count; i++) {
+        uint32_t w = words[i];
+        words[i] = (w >> 24) | ((w >> 8) & 0xFF00u) | ((w << 8) & 0xFF0000u) | (w << 24);
+    }
+}
 
 int dimension(const nlohmann::json &value, const char *what) {
     long long n = value.get<long long>();
@@ -49,7 +67,8 @@ void Weights::read(const std::string &path) {
         throw std::runtime_error("not a weights file: " + path);
     }
     mappedSize_ = static_cast<size_t>(st.st_size);
-    mapped_ = mmap(nullptr, mappedSize_, PROT_READ, MAP_PRIVATE, fd, 0);
+    // Written only on a big-endian machine, where the pages then become this process's own
+    mapped_ = mmap(nullptr, mappedSize_, kTurnBytes ? PROT_READ | PROT_WRITE : PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
     if (mapped_ == MAP_FAILED) {
         mapped_ = nullptr;
@@ -59,8 +78,7 @@ void Weights::read(const std::string &path) {
     if (std::memcmp(bytes, kMagic, sizeof kMagic) != 0) {
         throw std::runtime_error("not a weights file: " + path);
     }
-    uint32_t headerLen = 0;
-    std::memcpy(&headerLen, bytes + 8, 4);  // little endian, as the machines this runs on
+    uint32_t headerLen = littleEndian32(bytes + 8);
     if (12 + static_cast<size_t>(headerLen) > mappedSize_) {
         throw std::runtime_error("the header of the weights is cut: " + path);
     }
@@ -101,6 +119,9 @@ void Weights::read(const std::string &path) {
             throw std::runtime_error("a tensor of the weights is cut: " + t.at("name").get<std::string>());
         }
         tensor.data = reinterpret_cast<const float *>(data + offset);
+        if constexpr (kTurnBytes) {
+            turnBytes(const_cast<float *>(tensor.data), count);
+        }
         tensors_.emplace(t.at("name").get<std::string>(), std::move(tensor));
     }
 }
