@@ -38,6 +38,8 @@ public class KanjiServer {
     private final BunsetsuSegmenter segmenter = new BunsetsuSegmenter();
     /** The requests of the fcitx5 engine, answered with this model. */
     private final ImeApi ime;
+    /** The predictions ({@code /api/predict}), or {@code null} when they are off (see {@link PredictionService}). */
+    private final PredictionService predictions;
 
     /** The candidates the user chose: {@code -Dhistory.file=PATH} (default {@code user_history.tsv} in the
      *  working directory); an empty value keeps the history in memory only. */
@@ -56,6 +58,7 @@ public class KanjiServer {
                 KanjiModel.MOST_SCORED > 0 ? (reading, context, texts) -> Actors.ask(model, m -> m.scores(reading, context, texts))
                         : ImeApi.Scorer.NONE,
                 KanjiModel.SOURCE_WEIGHT);
+        predictions = PredictionService.fromProperties(system);
     }
 
     public void startAndBlock(int port) throws IOException {
@@ -72,9 +75,14 @@ public class KanjiServer {
         server.createContext("/api/segment-convert", ex -> answer(ex, ime::segmentConvert)).getFilters().add(guard);
         server.createContext("/api/segment-candidates", ex -> answer(ex, ime::segmentCandidates))
             .getFilters().add(guard);
-        server.createContext("/api/record", ex -> answer(ex, ime::record)).getFilters().add(guard);
+        server.createContext("/api/record", ex -> answer(ex, body -> {
+            if (predictions != null) {
+                predictions.learnCommitted(body);
+            }
+            return ime.record(body);
+        })).getFilters().add(guard);
         server.createContext("/api/continue", ex -> answer(ex, ime::continuation)).getFilters().add(guard);
-        server.createContext("/api/predict", ex -> respond(ex, 200, ime.predict())).getFilters().add(guard);
+        server.createContext("/api/predict", this::handlePredict).getFilters().add(guard);
         server.start();
         log.info("kana-kanji-server listening on :" + port);
         // block forever
@@ -82,6 +90,28 @@ public class KanjiServer {
             Thread.currentThread().join();
         } catch (InterruptedException ignored) {
             Thread.currentThread().interrupt();
+        }
+    }
+
+    /** {@code GET /api/predict?prefix=<reading typed so far>&limit=<n>}: {@code [{"candidate":..},..]}. */
+    private void handlePredict(HttpExchange ex) throws IOException {
+        String query = ex.getRequestURI().getRawQuery();
+        String prefix = extractParam(query, "prefix");
+        if (predictions == null || prefix == null || prefix.isBlank()) {
+            respond(ex, 200, ime.predict());
+            return;
+        }
+        int limit = 5;
+        try {
+            limit = Math.max(1, Math.min(20, Integer.parseInt(extractParam(query, "limit"))));
+        } catch (RuntimeException e) {
+            // the default
+        }
+        try {
+            respond(ex, 200, predictions.predict(prefix, limit));
+        } catch (Exception e) {
+            log.warning("Predict error: " + e.getMessage());
+            respond(ex, 200, "[]");
         }
     }
 
