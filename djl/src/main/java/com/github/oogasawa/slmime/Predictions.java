@@ -1,5 +1,12 @@
 package com.github.oogasawa.slmime;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -17,7 +24,13 @@ import java.util.TreeMap;
  * <p>Each sentence learned gives one text from the head of each bunsetsu in it to the end of the sentence, at
  * most {@link #LONGEST} characters, kept by its reading. A reading typed so far finds the texts whose readings begin
  * with it. Each text has a weight, the number of times it was learned, which halves every
- * {@link #HALF_LIFE_DAYS} days after it was last learned; the heaviest come first. Not shared between threads: an actor of the server holds it.</p>
+ * {@link #HALF_LIFE_DAYS} days after it was last learned; the heaviest come first. A text the user takes is
+ * committed and so learned again. When more than a given number are kept, the lightest are dropped
+ * ({@link #keepAtMost}): those learned once long ago and not taken since.</p>
+ *
+ * <p>The texts are saved in a file of their own ({@link #save}), one {@code reading TAB text TAB weight TAB
+ * time} per line, read at start ({@link #load}), so that they do not depend on where they came from. Not shared
+ * between threads: an actor of the server holds it.</p>
  */
 final class Predictions {
 
@@ -132,6 +145,77 @@ final class Predictions {
     /** How many texts are kept. */
     int size() {
         return texts;
+    }
+
+    /**
+     * Drops the lightest texts, as they weigh at {@code now}, when more than {@code most} are kept, down to nine
+     * tenths of it, so that this is not done again at every text learned after.
+     */
+    void keepAtMost(int most, long now) {
+        if (texts <= most) {
+            return;
+        }
+        record Kept(String reading, String text, double weight) {
+        }
+        List<Kept> all = new ArrayList<>(texts);
+        for (var r : byReading.entrySet()) {
+            for (var t : r.getValue().entrySet()) {
+                all.add(new Kept(r.getKey(), t.getKey(), decayed(t.getValue(), now)));
+            }
+        }
+        all.sort(Comparator.comparingDouble(Kept::weight));
+        int drop = texts - most * 9 / 10;
+        for (int i = 0; i < drop; i++) {
+            Kept k = all.get(i);
+            Map<String, Seen> same = byReading.get(k.reading());
+            same.remove(k.text());
+            if (same.isEmpty()) {
+                byReading.remove(k.reading());
+            }
+            texts--;
+        }
+    }
+
+    /** Writes the texts to {@code file}, readable by the user only, replacing it at once when written. */
+    void save(Path file) throws IOException {
+        Files.createDirectories(file.getParent());
+        Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+        Files.deleteIfExists(tmp);
+        Files.createFile(tmp, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        try (BufferedWriter out = Files.newBufferedWriter(tmp, StandardCharsets.UTF_8)) {
+            for (var r : byReading.entrySet()) {
+                for (var t : r.getValue().entrySet()) {
+                    out.write(r.getKey() + "\t" + t.getKey() + "\t" + t.getValue().weight + "\t" + t.getValue().when
+                            + "\n");
+                }
+            }
+        }
+        Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    /** The texts saved in {@code file}; none when there is no such file. Lines that cannot be read are skipped. */
+    static Predictions load(Path file) throws IOException {
+        Predictions p = new Predictions();
+        if (!Files.isRegularFile(file)) {
+            return p;
+        }
+        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+            String[] f = line.split("\t");
+            if (f.length != 4 || f[0].isEmpty() || f[1].isEmpty()) {
+                continue;
+            }
+            try {
+                Seen seen = new Seen();
+                seen.weight = Double.parseDouble(f[2]);
+                seen.when = Long.parseLong(f[3]);
+                if (p.byReading.computeIfAbsent(f[0], r -> new HashMap<>()).put(f[1], seen) == null) {
+                    p.texts++;
+                }
+            } catch (NumberFormatException e) {
+                // skipped
+            }
+        }
+        return p;
     }
 
     private static double decayed(Seen seen, long now) {

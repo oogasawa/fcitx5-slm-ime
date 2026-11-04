@@ -1,8 +1,13 @@
 package com.github.oogasawa.slmime;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -23,10 +28,12 @@ import java.util.stream.Stream;
  * {@code chat-ui-iolog-<port>.mv.db} under a directory.
  *
  * <p>Each turn of a conversation is a row of the table {@code logs} labelled {@code turn<n>/conversation}, whose
- * message is {@code QUESTION: <what the user wrote>} and then {@code ANSWER: <what the model answered>}. The files
- * are opened with {@code AUTO_SERVER=TRUE}, as the programs that write them open them, so that a file in use can be
- * read; nothing is written. A file is read again only from the rows after those read last time, and a turn is
- * taken once however many files hold it (the merged file of AI-workspace holds the turns of the others).</p>
+ * message is {@code QUESTION: <what the user wrote>} and then {@code ANSWER: <what the model answered>}. A file is
+ * never opened where it is: one that changed since it was read last is copied, and the copy is read, so that a
+ * program writing the file, running or started meanwhile, is not touched. A file is read from the rows after those
+ * read last time, and a turn is taken once however many files hold it (the merged file of AI-workspace holds the
+ * turns of the others). Where each file was read to, and the turns taken, are kept in a file of their own
+ * ({@link #saveState}), so that the files are not read again from the start after a restart.</p>
  */
 final class ConversationLogs {
 
@@ -41,9 +48,12 @@ final class ConversationLogs {
     /** How deep under the directory the files are looked for. */
     private static final int DEPTH = 3;
 
+    /** How far a file was read: its last row read, and its size and time when it was read. */
+    private record Place(long lastRow, long size, long modified) {
+    }
+
     private final Path dir;
-    /** The last row read of each file. */
-    private final Map<Path, Long> lastRead = new HashMap<>();
+    private final Map<Path, Place> places = new HashMap<>();
     /** The turns taken, by the hash of their message. */
     private final Set<Integer> taken = new HashSet<>();
 
@@ -54,10 +64,21 @@ final class ConversationLogs {
     /** The texts of the turns recorded since the last call (all of them at the first call). */
     List<Said> newTexts() {
         List<Said> said = new ArrayList<>();
+        if (!Files.isDirectory(dir)) {
+            return said;
+        }
         for (Path file : files()) {
             try {
-                read(file, said);
-            } catch (SQLException e) {
+                BasicFileAttributes a = Files.readAttributes(file, BasicFileAttributes.class);
+                Place place = places.get(file);
+                long modified = a.lastModifiedTime().toMillis();
+                if (place != null && place.size() == a.size() && place.modified() == modified) {
+                    continue;
+                }
+                long lastRow = readCopy(file, place == null ? -1 : place.lastRow(), said);
+                places.put(file, new Place(lastRow, a.size(), modified));
+            } catch (IOException | SQLException e) {
+                // A copy made while the file was being written may not open: it is read again next time
                 log.warning("cannot read the conversation log " + file + ": " + e.getMessage());
             }
         }
@@ -75,28 +96,40 @@ final class ConversationLogs {
         }
     }
 
-    private void read(Path file, List<Said> said) throws SQLException {
-        String name = file.toAbsolutePath().toString();
-        String url = "jdbc:h2:" + name.substring(0, name.length() - ".mv.db".length()) + ";AUTO_SERVER=TRUE;IFEXISTS=TRUE";
-        long after = lastRead.getOrDefault(file, -1L);
-        try (Connection connection = new org.h2.Driver().connect(url, new Properties());
-             PreparedStatement query = connection.prepareStatement(
-                     "SELECT ID, TIMESTAMP, MESSAGE FROM LOGS WHERE ID > ? AND LABEL LIKE 'turn%/conversation' "
-                             + "AND MESSAGE LIKE 'QUESTION:%' ORDER BY ID")) {
-            query.setLong(1, after);
-            try (ResultSet rows = query.executeQuery()) {
-                while (rows.next()) {
-                    after = rows.getLong(1);
-                    String message = rows.getString(3);
-                    if (message == null || !taken.add(message.hashCode())) {
-                        continue;
+    /** Reads the rows after {@code after} of a copy of {@code file}; the last row read. */
+    private long readCopy(Path file, long after, List<Said> said) throws IOException, SQLException {
+        Path tmp = Files.createTempDirectory("slm-ime-log",
+                PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+        Path copy = tmp.resolve("log.mv.db");
+        try {
+            Files.copy(file, copy, StandardCopyOption.REPLACE_EXISTING);
+            String url = "jdbc:h2:" + tmp.resolve("log") + ";ACCESS_MODE_DATA=r;IFEXISTS=TRUE";
+            try (Connection connection = new org.h2.Driver().connect(url, new Properties());
+                 PreparedStatement query = connection.prepareStatement(
+                         "SELECT ID, TIMESTAMP, MESSAGE FROM LOGS WHERE ID > ? AND LABEL LIKE 'turn%/conversation' "
+                                 + "AND MESSAGE LIKE 'QUESTION:%' ORDER BY ID")) {
+                query.setLong(1, after);
+                try (ResultSet rows = query.executeQuery()) {
+                    while (rows.next()) {
+                        after = rows.getLong(1);
+                        String message = rows.getString(3);
+                        if (message == null || !taken.add(message.hashCode())) {
+                            continue;
+                        }
+                        long when = rows.getTimestamp(2) == null ? 0 : rows.getTimestamp(2).getTime();
+                        split(message, when, said);
                     }
-                    long when = rows.getTimestamp(2) == null ? 0 : rows.getTimestamp(2).getTime();
-                    split(message, when, said);
                 }
             }
+            return after;
+        } finally {
+            try (Stream<Path> left = Files.list(tmp)) {
+                for (Path p : left.toList()) {
+                    Files.deleteIfExists(p);
+                }
+            }
+            Files.deleteIfExists(tmp);
         }
-        lastRead.put(file, after);
     }
 
     /** The user's text and the model's text of one turn. */
@@ -114,6 +147,41 @@ final class ConversationLogs {
             String model = message.substring(message.indexOf(ANSWER, answer) + ANSWER.length()).strip();
             if (!model.isEmpty()) {
                 said.add(new Said(model, false, when));
+            }
+        }
+    }
+
+    /** Writes where each file was read to and the turns taken: {@code file TAB path TAB row TAB size TAB time} and
+     *  {@code turn TAB hash} lines. */
+    void saveState(Path file) throws IOException {
+        List<String> lines = new ArrayList<>();
+        places.forEach((p, place) -> lines.add("file\t" + p + "\t" + place.lastRow() + "\t" + place.size() + "\t"
+                + place.modified()));
+        taken.forEach(h -> lines.add("turn\t" + h));
+        Files.createDirectories(file.getParent());
+        Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
+        Files.deleteIfExists(tmp);
+        Files.createFile(tmp, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")));
+        Files.write(tmp, lines, StandardCharsets.UTF_8);
+        Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    /** Reads what {@link #saveState} wrote, if the file is there. */
+    void loadState(Path file) throws IOException {
+        if (!Files.isRegularFile(file)) {
+            return;
+        }
+        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+            String[] f = line.split("\t");
+            try {
+                if (f.length == 5 && f[0].equals("file")) {
+                    places.put(Paths.get(f[1]), new Place(Long.parseLong(f[2]), Long.parseLong(f[3]),
+                            Long.parseLong(f[4])));
+                } else if (f.length == 2 && f[0].equals("turn")) {
+                    taken.add(Integer.parseInt(f[1]));
+                }
+            } catch (NumberFormatException e) {
+                // skipped
             }
         }
     }

@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import com.scivicslab.pojoactor.core.ActorRef;
 import com.scivicslab.pojoactor.core.ActorSystem;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -13,14 +14,17 @@ import java.util.List;
 import java.util.logging.Logger;
 
 /**
- * The predictions of the server ({@code /api/predict}): the texts of the conversation logs and those the user
- * commits, learned by {@link Predictions}.
+ * The predictions of the server ({@code /api/predict}): the texts the user commits and those of the conversation
+ * logs of chat-ui, learned by {@link Predictions}.
  *
- * <p>Off unless both {@code -Dpredict.logs=DIR} (the directory under which the {@code chat-ui-iolog-*.mv.db} files
- * are, see {@link ConversationLogs}) and {@code -Dpredict.dict=PATH} (the {@code system.dic} of SudachiDict) are
- * given: the conversation logs hold what the user wrote, and are read only when the user says where they are.
- * The logs are read at start and every {@code -Dpredict.refresh.minutes} minutes (default 60) after, on a virtual
- * thread of its own, so that the server answers while they are read.</p>
+ * <p>The texts are kept in a file of the server, {@code -Dpredict.file} (default
+ * {@code $XDG_DATA_HOME/slm-ime/predictions.tsv}), read at start: once learned, a text does not depend on where it
+ * came from. The conversation logs, under {@code -Dpredict.logs=DIR} if given, give the first texts and, whenever
+ * they are there and have grown, what the user and the model wrote since ({@link ConversationLogs}); without them
+ * the predictions go on with the texts kept and those the user commits. Every {@code -Dpredict.refresh.minutes}
+ * minutes (default 60), on a virtual thread of its own, the logs are read, the lightest texts are dropped when more
+ * than {@code -Dpredict.most} (default 200,000) are kept, and the file is written. Off unless
+ * {@code -Dpredict.dict=PATH} (the {@code system.dic} of SudachiDict, which gives the readings) is given.</p>
  */
 final class PredictionService {
 
@@ -31,30 +35,42 @@ final class PredictionService {
 
     private final ActorRef<Readings> readings;
     private final ActorRef<Predictions> predictions;
+    private final Path file;
+    private final int most;
 
-    private PredictionService(ActorRef<Readings> readings, ActorRef<Predictions> predictions) {
+    private PredictionService(ActorRef<Readings> readings, ActorRef<Predictions> predictions, Path file, int most) {
         this.readings = readings;
         this.predictions = predictions;
+        this.file = file;
+        this.most = most;
     }
 
     /** The service the system properties ask for, or {@code null} when predictions are off. */
     static PredictionService fromProperties(ActorSystem system) {
-        String logs = System.getProperty("predict.logs", "");
         String dict = System.getProperty("predict.dict", "");
-        if (logs.isBlank() || dict.isBlank()) {
+        if (dict.isBlank()) {
             return null;
         }
-        if (!Files.isDirectory(Paths.get(logs)) || !Files.isRegularFile(Paths.get(dict))) {
-            log.warning("predictions are off: " + logs + " is not a directory or " + dict + " is not a file");
+        if (!Files.isRegularFile(Paths.get(dict))) {
+            log.warning("predictions are off: " + dict + " is not a file");
             return null;
         }
         try {
+            Path file = Paths.get(System.getProperty("predict.file", dataDir().resolve("predictions.tsv").toString()));
             PredictionService service = new PredictionService(
                     system.actorOf("readings", new Readings(Paths.get(dict))),
-                    system.actorOf("predictions", new Predictions()));
+                    system.actorOf("predictions", Predictions.load(file)),
+                    file, Integer.getInteger("predict.most", 200_000));
+            String logs = System.getProperty("predict.logs", "");
+            ConversationLogs conversations = logs.isBlank() ? null : new ConversationLogs(Paths.get(logs));
+            Path state = file.resolveSibling("prediction-logs.tsv");
+            if (conversations != null) {
+                conversations.loadState(state);
+            }
             long minutes = Long.getLong("predict.refresh.minutes", 60);
-            ConversationLogs conversations = new ConversationLogs(Paths.get(logs));
-            Thread.ofVirtual().name("prediction-logs").start(() -> service.keepReading(conversations, minutes));
+            Thread.ofVirtual().name("prediction-logs")
+                    .start(() -> service.keepReading(conversations, state, minutes));
+            Runtime.getRuntime().addShutdownHook(new Thread(service::save));
             return service;
         } catch (Exception e) {
             log.warning("predictions are off: " + e.getMessage());
@@ -62,15 +78,32 @@ final class PredictionService {
         }
     }
 
-    private void keepReading(ConversationLogs conversations, long minutes) {
+    private static Path dataDir() {
+        String data = System.getenv("XDG_DATA_HOME");
+        if (data == null || data.isBlank()) {
+            data = System.getProperty("user.home") + "/.local/share";
+        }
+        return Paths.get(data, "slm-ime");
+    }
+
+    private void keepReading(ConversationLogs conversations, Path state, long minutes) {
         while (true) {
             long start = System.currentTimeMillis();
-            List<ConversationLogs.Said> said = conversations.newTexts();
-            for (ConversationLogs.Said s : said) {
-                learn(s.text(), WEIGHT, s.when());
+            int learned = 0;
+            if (conversations != null) {
+                List<ConversationLogs.Said> said = conversations.newTexts();
+                for (ConversationLogs.Said s : said) {
+                    learn(s.text(), s.when());
+                }
+                learned = said.size();
+                try {
+                    conversations.saveState(state);
+                } catch (IOException e) {
+                    log.warning("cannot write " + state + ": " + e.getMessage());
+                }
             }
-            int size = Actors.ask(predictions, Predictions::size);
-            log.info("predictions: learned " + said.size() + " texts of the conversation logs in "
+            int size = save();
+            log.info("predictions: learned " + learned + " texts of the conversation logs in "
                     + (System.currentTimeMillis() - start) + " ms, " + size + " kept");
             try {
                 Thread.sleep(minutes * 60_000);
@@ -80,9 +113,22 @@ final class PredictionService {
         }
     }
 
-    private void learn(String text, double weight, long when) {
+    /** Drops the lightest texts if too many are kept, and writes the file; how many are kept. */
+    private int save() {
+        return Actors.ask(predictions, p -> {
+            p.keepAtMost(most, System.currentTimeMillis());
+            try {
+                p.save(file);
+            } catch (IOException e) {
+                log.warning("cannot write " + file + ": " + e.getMessage());
+            }
+            return p.size();
+        });
+    }
+
+    private void learn(String text, long when) {
         List<Readings.Word> words = Actors.ask(readings, r -> r.words(text));
-        predictions.tell(p -> p.learn(words, weight, when));
+        predictions.tell(p -> p.learn(words, WEIGHT, when));
     }
 
     /** {@code [{"candidate":..},..]}, the predictions for the reading typed so far. */
@@ -103,7 +149,7 @@ final class PredictionService {
             if (request.has("committed") && request.get("committed").isJsonPrimitive()) {
                 String text = request.get("committed").getAsString();
                 if (!text.isBlank()) {
-                    Thread.ofVirtual().start(() -> learn(text, WEIGHT, System.currentTimeMillis()));
+                    Thread.ofVirtual().start(() -> learn(text, System.currentTimeMillis()));
                 }
             }
         } catch (RuntimeException e) {
