@@ -465,6 +465,17 @@ private:
             return;
         }
 
+        // Tab while typing commits the first prediction shown for the reading typed so far
+        if (key.check(Key(FcitxKey_Tab)) && !predictions_.empty() &&
+            predictionsFor_ == romajiToHiragana(state->buffer_.userInput())) {
+            std::string text = predictions_.front();
+            ic->commitString(text);
+            rememberCommitted(ic, state, text);
+            resetState(ic, state);
+            event.filterAndAccept();
+            return;
+        }
+
         // The model's conversion of the whole reading
         if (is(key, Action::ModelConvert)) {
             startLlmConversion(ic, state);
@@ -1228,6 +1239,10 @@ private:
                 }
             }
             json corrections = json::array();
+            std::string committedText;  // what the user committed, for the predictions of the server
+            for (auto &c : committed) {
+                committedText += c.text;
+            }
             for (auto &changed : changedChoices(pending.offered, committed)) {
                 json correction = {{"reading", changed.reading}, {"chosen", changed.text}};
                 std::string down = turnedDown(pending.offered, changed);
@@ -1236,8 +1251,9 @@ private:
                 }
                 corrections.push_back(correction);
             }
-            if (!corrections.empty()) {
-                learnInBackground({{"input", pending.input}, {"output", pending.output}, {"corrections", corrections}});
+            if (!corrections.empty() || !committedText.empty()) {
+                learnInBackground({{"input", pending.input}, {"output", pending.output}, {"corrections", corrections},
+                                   {"committed", committedText}});
             }
         } catch (...) {
             // Ignore record failures
@@ -1397,9 +1413,14 @@ private:
                 panel.setPreedit(preedit);
             }
 
-            // Fetch predictions from predict daemon (non-blocking best-effort)
+            // Predictions of the server for the reading typed so far: asked for on another thread, and shown when
+            // they come for the reading still typed
             if (utf8CharCount(hiragana) >= 5) {
-                fetchPredictions(ic, state, hiragana);
+                if (predictionsFor_ == hiragana) {
+                    showPredictions(ic);
+                } else {
+                    requestPredictions(ic, hiragana);
+                }
             }
         }
         ic->updatePreedit();
@@ -1421,33 +1442,68 @@ private:
         return result;
     }
 
-    // Query predict daemon for prefix-matched candidates and show them
-    void fetchPredictions(InputContext *ic, LlmImeState * /*state*/,
-                          const std::string &hiragana) {
-        try {
-            std::string query = "/api/predict?prefix=" + urlEncode(hiragana) +
-                                "&limit=5";
-
-            json resp = predictClient_.get(query);
-            if (!resp.is_array() || resp.empty()) return;
-
-            auto &panel = ic->inputPanel();
-            auto candidateList = std::make_unique<CommonCandidateList>();
-            candidateList->setPageSize(5);
-            candidateList->setLayoutHint(CandidateLayoutHint::Vertical);
-            for (int i = 0; i < (int)resp.size(); i++) {
-                if (resp[i].contains("candidate")) {
-                    candidateList->append<LlmCandidate>(
-                        Text(resp[i]["candidate"].get<std::string>()),
-                        0, i);
-                }
-            }
-            if (candidateList->totalSize() > 0) {
-                panel.setCandidateList(std::move(candidateList));
-            }
-        } catch (const std::exception &) {
-            // Predict daemon unavailable — silently ignore
+    // Asks the server for the predictions of a reading on another thread, one request at a time: a reading typed
+    // while one is asked for is asked for after it, if it is still the one typed then.
+    void requestPredictions(InputContext *ic, const std::string &hiragana) {
+        if (predicting_) {
+            predictNext_ = ic->watch();
+            return;
         }
+        predicting_ = true;
+        auto ref = ic->watch();
+        runInBackground([this, ref, hiragana]() {
+            std::vector<std::string> found;
+            try {
+                llm_ime::HttpClient client(kDaemonUrl);
+                json resp = client.get("/api/predict?prefix=" + urlEncode(hiragana) + "&limit=5");
+                if (resp.is_array()) {
+                    for (auto &r : resp) {
+                        if (r.contains("candidate") && r["candidate"].is_string()) {
+                            found.push_back(r["candidate"].get<std::string>());
+                        }
+                    }
+                }
+            } catch (const std::exception &) {
+                // No predictions when the server does not answer
+            }
+            dispatcher_.schedule([this, ref, hiragana, found = std::move(found)]() {
+                predicting_ = false;
+                predictions_ = found;
+                predictionsFor_ = hiragana;
+                if (auto *ic = ref.get()) {
+                    auto *state = ic->propertyFor(&factory_);
+                    if (!state->converting_ && state->buffer_.size() > 0 &&
+                        romajiToHiragana(state->buffer_.userInput()) == hiragana) {
+                        showPredictions(ic);
+                        ic->updateUserInterface(UserInterfaceComponent::InputPanel);
+                    }
+                }
+                if (auto *next = predictNext_.get()) {
+                    predictNext_.unwatch();
+                    auto *state = next->propertyFor(&factory_);
+                    if (!state->converting_ && state->buffer_.size() > 0) {
+                        std::string typed = romajiToHiragana(state->buffer_.userInput());
+                        if (typed != hiragana && utf8CharCount(typed) >= 5) {
+                            requestPredictions(next, typed);
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    // The predictions for the reading typed so far as a list under it; Tab commits the first
+    void showPredictions(InputContext *ic) {
+        if (predictions_.empty()) {
+            return;
+        }
+        auto candidateList = std::make_unique<CommonCandidateList>();
+        candidateList->setPageSize(5);
+        candidateList->setLayoutHint(CandidateLayoutHint::Vertical);
+        for (int i = 0; i < (int)predictions_.size(); i++) {
+            candidateList->append<LlmCandidate>(Text(predictions_[i]), 0, i);
+        }
+        ic->inputPanel().setCandidateList(std::move(candidateList));
     }
 
     // Every candidate of the dictionary for the reading of a bunsetsu, not only the first ones the list shows: the
@@ -1704,6 +1760,12 @@ private:
     std::vector<KeyList> keys_;
     llm_ime::HttpClient httpClient_;
     llm_ime::HttpClient predictClient_;
+    // The predictions of the server and the reading they are for; whether one is being asked for, and the input
+    // context whose reading is to be asked for after it
+    std::vector<std::string> predictions_;
+    std::string predictionsFor_;
+    bool predicting_ = false;
+    TrackableObjectReference<InputContext> predictNext_;
     FactoryFor<LlmImeState> factory_;
     EventDispatcher dispatcher_;
     std::vector<std::unique_ptr<HandlerTableEntry<EventHandler>>> eventHandlers_;
