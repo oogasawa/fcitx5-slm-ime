@@ -54,6 +54,16 @@ class HintSubstitutionTest {
     }
 
     @Test
+    void aWordAfterRightOrLeftIsPutInWithIt() {
+        assertEquals("右下葉無気肺を|認めます。", HintSubstitution.apply("うかようむきはいをみとめます。", "羽化用向き肺を|認めます。",
+            hints("かようむきはい=下葉無気肺")));
+        assertEquals("右下葉無気肺を|認めます。", HintSubstitution.apply("うかようむきはいをみとめます。", "右下葉無気肺を|認めます。",
+            hints("かようむきはい=下葉無気肺")));
+        // not after another kana
+        assertEquals("下下葉無気肺を", HintSubstitution.apply("げかようむきはいを", "下下葉無気肺を", hints("かようむきはい=下葉無気肺")));
+    }
+
+    @Test
     void kanaTheModelWroteOnPurposeStays() {
         assertEquals("ご了承ください。", HintSubstitution.apply("ごりょうしょうください。", "ご了承ください。",
             hints("ごりょうしょう=御了承")));
