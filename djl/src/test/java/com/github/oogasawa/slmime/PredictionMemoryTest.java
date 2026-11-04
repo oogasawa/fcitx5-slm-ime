@@ -6,16 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.sql.Connection;
-import java.sql.Statement;
 import java.util.List;
-import java.util.Properties;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The memory of the predictions: kept in a file of its own, trimmed to the heaviest, and fed from the conversation
- * logs, read in copies, from where they were read last.
+ * The memory of the predictions: kept in a file of its own, trimmed to the heaviest, and fed with the texts other
+ * programs put in the inbox.
  */
 class PredictionMemoryTest {
 
@@ -59,51 +56,24 @@ class PredictionMemoryTest {
         assertEquals(0, Predictions.load(dir.resolve("none.tsv")).size());
     }
 
-    private static void write(Path db, String... messages) throws Exception {
-        String name = db.toString();
-        String url = "jdbc:h2:" + name.substring(0, name.length() - ".mv.db".length());
-        try (Connection c = new org.h2.Driver().connect(url, new Properties()); Statement s = c.createStatement()) {
-            s.execute("CREATE TABLE IF NOT EXISTS LOGS (ID BIGINT AUTO_INCREMENT PRIMARY KEY, TIMESTAMP TIMESTAMP, "
-                    + "LABEL VARCHAR(100), MESSAGE CLOB)");
-            for (String m : messages) {
-                s.execute("INSERT INTO LOGS (TIMESTAMP, LABEL, MESSAGE) VALUES (CURRENT_TIMESTAMP, "
-                        + "'turn1/conversation', '" + m + "')");
-            }
-            s.execute("INSERT INTO LOGS (TIMESTAMP, LABEL, MESSAGE) VALUES (CURRENT_TIMESTAMP, 'turn1/step1/llm', "
-                    + "'QUESTION: not a turn')");
-        }
-    }
-
     @Test
-    void theLogsAreReadInCopiesFromWhereTheyWereReadLast() throws Exception {
-        Path logs = Files.createDirectories(dir.resolve("works"));
-        Path db = logs.resolve("chat-ui-iolog-28010.mv.db");
-        write(db, "QUESTION: どうなりましたか？\nANSWER: まだ学習の途中です。");
-        long modified = Files.getLastModifiedTime(db).toMillis();
-        ConversationLogs conversations = new ConversationLogs(logs);
-        List<ConversationLogs.Said> first = conversations.newTexts();
-        assertEquals(2, first.size());
-        assertEquals("どうなりましたか？", first.get(0).text());
-        // the file itself was not opened: not changed, and no lock or trace file next to it
-        assertEquals(modified, Files.getLastModifiedTime(db).toMillis());
-        try (var left = Files.list(logs)) {
-            assertEquals(List.of(db), left.toList());
+    void theTextsOfTheInboxAreTakenOnce() throws Exception {
+        Path inbox = Files.createDirectories(dir.resolve("learn"));
+        Files.writeString(inbox.resolve("b.jsonl"), "{\"text\": \"続きをお願いします\", \"time\": 7}\n");
+        Files.writeString(inbox.resolve("a.jsonl"), "{\"text\": \"どうなりましたか？\", \"time\": 5}\n"
+                + "not json\n{\"no\": \"text\"}\n\n{\"text\": \"時刻なし\"}\n");
+        // half written: not taken yet
+        Files.writeString(inbox.resolve("c.jsonl.tmp"), "{\"text\": \"書きかけ\"}\n");
+        List<LearnInbox.Text> texts = new LearnInbox(inbox).take();
+        assertEquals(List.of("どうなりましたか？", "時刻なし", "続きをお願いします"),
+                texts.stream().map(LearnInbox.Text::text).toList());
+        assertEquals(5, texts.get(0).when());
+        assertTrue(texts.get(1).when() > NOW);
+        // the files read are gone, the one being written is left
+        try (var left = Files.list(inbox)) {
+            assertEquals(List.of(inbox.resolve("c.jsonl.tmp")), left.toList());
         }
-        // unchanged: nothing more
-        assertEquals(0, conversations.newTexts().size());
-        // a turn more, and the same turn in another file (the merged one): only the new turn
-        write(db, "QUESTION: 続きをお願いします\nANSWER: はい。");
-        write(logs.resolve("chat-ui-iolog-all.mv.db"), "QUESTION: どうなりましたか？\nANSWER: まだ学習の途中です。");
-        List<ConversationLogs.Said> next = conversations.newTexts();
-        assertEquals(2, next.size());
-        assertEquals("続きをお願いします", next.get(0).text());
-        // after a restart, with the state saved, nothing is read again
-        Path state = dir.resolve("prediction-logs.tsv");
-        conversations.saveState(state);
-        ConversationLogs again = new ConversationLogs(logs);
-        again.loadState(state);
-        assertTrue(again.newTexts().isEmpty());
-        // without the logs, nothing, and no error
-        assertTrue(new ConversationLogs(dir.resolve("gone")).newTexts().isEmpty());
+        assertTrue(new LearnInbox(inbox).take().isEmpty());
+        assertTrue(new LearnInbox(dir.resolve("gone")).take().isEmpty());
     }
 }

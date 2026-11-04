@@ -8,8 +8,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * The predictions found by the reading typed so far, from sentences cut into words by hand as Sudachi cuts them,
- * and the user's own words told from the text of a model in the conversation logs.
+ * The predictions found by the reading typed so far, from sentences cut into words by hand as Sudachi cuts them.
  */
 class PredictionsTest {
 
@@ -103,16 +102,5 @@ class PredictionsTest {
                 w("で", "で", "助詞"), w("行き", "いき", "動詞"), w("ましょう", "ましょう", "助動詞"),
                 w("。", "", "補助記号")), 1, NOW);
         assertEquals(List.of("はい、それで行きましょう。"), p.predict("はい、そ", 5, NOW));
-    }
-
-    @Test
-    void aTurnGivesWhatTheUserWroteAndWhatTheModelAnswered() {
-        List<ConversationLogs.Said> said = new ArrayList<>();
-        ConversationLogs.split("QUESTION: どうなりましたか？\n\nANSWER: まだ学習の途中です。", 5, said);
-        assertEquals(2, said.size());
-        assertEquals("どうなりましたか？", said.get(0).text());
-        assertTrue(said.get(0).byUser());
-        assertEquals("まだ学習の途中です。", said.get(1).text());
-        assertEquals(5, said.get(1).when());
     }
 }

@@ -54,12 +54,6 @@
             <artifactId>sudachi</artifactId>
             <version>0.7.5</version>
         </dependency>
-        <!-- The conversation logs of chat-ui, read for the predictions; the version they are written with -->
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <version>2.2.224</version>
-        </dependency>
 
         <!-- Logging (DJL uses slf4j) -->
         <dependency>

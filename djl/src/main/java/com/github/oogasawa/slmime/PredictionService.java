@@ -14,17 +14,16 @@ import java.util.List;
 import java.util.logging.Logger;
 
 /**
- * The predictions of the server ({@code /api/predict}): the texts the user commits and those of the conversation
- * logs of chat-ui, learned by {@link Predictions}.
+ * The predictions of the server ({@code /api/predict}): the texts the user commits and those other programs put in
+ * the inbox ({@link LearnInbox}), learned by {@link Predictions}.
  *
  * <p>The texts are kept in a file of the server, {@code -Dpredict.file} (default
  * {@code $XDG_DATA_HOME/slm-ime/predictions.tsv}), read at start: once learned, a text does not depend on where it
- * came from. The conversation logs, under {@code -Dpredict.logs=DIR} if given, give the first texts and, whenever
- * they are there and have grown, what the user and the model wrote since ({@link ConversationLogs}); without them
- * the predictions go on with the texts kept and those the user commits. Every {@code -Dpredict.refresh.minutes}
- * minutes (default 60), on a virtual thread of its own, the logs are read, the lightest texts are dropped when more
- * than {@code -Dpredict.most} (default 200,000) are kept, and the file is written. Off unless
- * {@code -Dpredict.dict=PATH} (the {@code system.dic} of SudachiDict, which gives the readings) is given.</p>
+ * came from. At start and every {@code -Dpredict.refresh.minutes} minutes (default 60) after, on a virtual thread
+ * of its own, the texts of the inbox ({@code -Dpredict.inbox}, default {@code $XDG_DATA_HOME/slm-ime/learn}) are
+ * learned, the lightest texts are dropped when more than {@code -Dpredict.most} (default 200,000) are kept, and
+ * the file is written. Off unless {@code -Dpredict.dict=PATH} (the {@code system.dic} of SudachiDict, which gives
+ * the readings) is given.</p>
  */
 final class PredictionService {
 
@@ -61,15 +60,10 @@ final class PredictionService {
                     system.actorOf("readings", new Readings(Paths.get(dict))),
                     system.actorOf("predictions", Predictions.load(file)),
                     file, Integer.getInteger("predict.most", 200_000));
-            String logs = System.getProperty("predict.logs", "");
-            ConversationLogs conversations = logs.isBlank() ? null : new ConversationLogs(Paths.get(logs));
-            Path state = file.resolveSibling("prediction-logs.tsv");
-            if (conversations != null) {
-                conversations.loadState(state);
-            }
+            LearnInbox inbox = new LearnInbox(
+                    Paths.get(System.getProperty("predict.inbox", dataDir().resolve("learn").toString())));
             long minutes = Long.getLong("predict.refresh.minutes", 60);
-            Thread.ofVirtual().name("prediction-logs")
-                    .start(() -> service.keepReading(conversations, state, minutes));
+            Thread.ofVirtual().name("prediction-inbox").start(() -> service.keepReading(inbox, minutes));
             Runtime.getRuntime().addShutdownHook(new Thread(service::save));
             return service;
         } catch (Exception e) {
@@ -86,24 +80,15 @@ final class PredictionService {
         return Paths.get(data, "slm-ime");
     }
 
-    private void keepReading(ConversationLogs conversations, Path state, long minutes) {
+    private void keepReading(LearnInbox inbox, long minutes) {
         while (true) {
             long start = System.currentTimeMillis();
-            int learned = 0;
-            if (conversations != null) {
-                List<ConversationLogs.Said> said = conversations.newTexts();
-                for (ConversationLogs.Said s : said) {
-                    learn(s.text(), s.when());
-                }
-                learned = said.size();
-                try {
-                    conversations.saveState(state);
-                } catch (IOException e) {
-                    log.warning("cannot write " + state + ": " + e.getMessage());
-                }
+            List<LearnInbox.Text> texts = inbox.take();
+            for (LearnInbox.Text t : texts) {
+                learn(t.text(), t.when());
             }
             int size = save();
-            log.info("predictions: learned " + learned + " texts of the conversation logs in "
+            log.info("predictions: learned " + texts.size() + " texts of the inbox in "
                     + (System.currentTimeMillis() - start) + " ms, " + size + " kept");
             try {
                 Thread.sleep(minutes * 60_000);
