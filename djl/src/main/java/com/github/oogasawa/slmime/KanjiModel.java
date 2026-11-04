@@ -47,6 +47,8 @@ public class KanjiModel {
     private final Predictor<NDList, NDList> crossKv;
     private final Predictor<NDList, NDList> step;
     private final NDManager manager;
+    /** The words of the dictionary put in front of the source, or null ({@link #HINTS_DICT}). */
+    private final DictionaryHints hints;
     /** How many candidates of a bunsetsu from Anthy the model puts in order ({@code -Dcandidates.scored=N});
      *  the others follow them in Anthy's order, and 0 leaves all in Anthy's order. */
     static final int MOST_SCORED = Integer.getInteger("candidates.scored", 20);
@@ -94,6 +96,11 @@ public class KanjiModel {
         }
         log.info("Decoder key-value cache: " + (cached ? "on" : "off"));
         manager = NDManager.newBaseManager(Device.cpu());
+        if (HINTS_DICT != null && !USE_CONTEXT) {
+            throw new IllegalArgumentException("-Dhints.dict needs a model trained with context (-Dmodel.context=true)");
+        }
+        hints = HINTS_DICT == null ? null : DictionaryHints.load(Paths.get(HINTS_DICT));
+        log.info("Dictionary hints: " + (hints == null ? "off" : HINTS_DICT));
         log.info("Models ready.");
     }
 
@@ -111,6 +118,11 @@ public class KanjiModel {
     private static final boolean USE_CONTEXT = Boolean.parseBoolean(System.getProperty("model.context", "false"));
     /** How many characters before the cursor that model was trained to read. */
     private static final int CONTEXT_CHARS = Integer.getInteger("model.contextChars", 48);
+    /** The table of words given to a model trained with hints ({@code -Dhints.dict=hard_words.tsv}, version 3), or
+     *  null: no hints. Only for a model trained with the text before the cursor. */
+    private static final String HINTS_DICT = System.getProperty("hints.dict");
+    /** The longest source the model was trained with, before EOS ({@code --max-len} of train.py). */
+    private static final int MAX_LEN = Integer.getInteger("model.maxLen", 192);
 
     String translate(String input) throws Exception {
         return translate(input, "");
@@ -149,7 +161,9 @@ public class KanjiModel {
         if (LOG_CONTEXT) {
             log.info("request input=[" + input + "] context(" + context.length() + " chars)=[" + context + "]");
         }
-        List<Integer> srcIds = SourceIds.of(tokenizer, context, input, USE_CONTEXT, CONTEXT_CHARS);
+        List<Integer> srcIds = hints == null
+            ? SourceIds.of(tokenizer, context, input, USE_CONTEXT, CONTEXT_CHARS)
+            : SourceIds.withHints(tokenizer, context, input, CONTEXT_CHARS, hints.of(input), MAX_LEN);
         int srcLen = srcIds.size();
         // The text is about as long as the reading, whatever the text before the cursor. The '|' between the bunsetsu
         // are not counted: a reading of many bunsetsu with long kana tails would lose its last characters

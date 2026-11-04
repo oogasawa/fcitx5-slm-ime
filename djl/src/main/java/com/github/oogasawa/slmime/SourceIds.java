@@ -39,6 +39,48 @@ public final class SourceIds {
         return ids;
     }
 
+    /**
+     * The source of a model trained with hints (prep/add_hints.py): {@code reading=word ... SEP <text before the
+     * cursor> SEP <reading> EOS}, the text before the cursor cut from the left so that the source before EOS stays
+     * within {@code maxLen} characters. Without hints, or when the hints and the reading alone are too long, the
+     * source is the one of {@link #of(CharTokenizer, String, String, boolean, int)} with context.
+     */
+    public static List<Integer> withHints(CharTokenizer tokenizer, String context, String reading, int contextChars,
+                                          List<DictionaryHints.Hint> hints, int maxLen) {
+        String text = text(context, reading, contextChars, hints, maxLen);
+        List<Integer> ids = new ArrayList<>();
+        for (int p : text.codePoints().toArray()) {
+            ids.addAll(p == SEP_CHAR ? List.of(SEP_ID) : tokenizer.encodeChars(Character.toString(p)));
+        }
+        ids.add(EOS_ID);
+        return ids;
+    }
+
+    /** The character that stands for {@code [SEP]} in the training rows. */
+    static final int SEP_CHAR = 0x1f;
+
+    /** The source of {@link #withHints} as text, with {@link #SEP_CHAR} for SEP, as the training rows have it. */
+    static String text(String context, String reading, int contextChars, List<DictionaryHints.Hint> hints,
+                       int maxLen) {
+        String sep = Character.toString(SEP_CHAR);
+        String before = tail(context, contextChars);
+        String plain = before + sep + reading;
+        if (hints.isEmpty()) {
+            return plain;
+        }
+        StringBuilder head = new StringBuilder();
+        for (DictionaryHints.Hint h : hints) {
+            head.append(head.length() == 0 ? "" : " ").append(h);
+        }
+        head.append(sep);
+        int headLen = head.codePointCount(0, head.length());
+        int room = maxLen - headLen - 1 - reading.codePointCount(0, reading.length());
+        if (room < 0) {
+            return plain;
+        }
+        return head + tail(before, room) + sep + reading;
+    }
+
     /** The last {@code count} characters (code points) of {@code text}. */
     static String tail(String text, int count) {
         if (text == null || text.isEmpty() || count <= 0) {
