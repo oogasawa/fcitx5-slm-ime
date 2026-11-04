@@ -163,6 +163,9 @@ def train(args: argparse.Namespace) -> None:
         best_valid_loss = ckpt.get("best_val_loss", ckpt.get("val_loss", float("inf")))
         start_epoch = ckpt["epoch"] + 1
         print(f"Resumed: epoch {ckpt['epoch']} done, best_val_loss={best_valid_loss:.4f}, starting from epoch {start_epoch}")
+    elif args.init_from:
+        print(f"Starting from the weights of {args.init_from}")
+        model.load_state_dict(torch.load(args.init_from, map_location=device)["model_state"])
 
     for epoch in range(start_epoch, args.epochs + 1):
         # Train
@@ -272,6 +275,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--d-ff", type=int, default=1024)
     p.add_argument("--dropout", type=float, default=0.1)
     p.add_argument("--max-len", type=int, default=128)
+    p.add_argument("--init-from", type=str, default="",
+                   help="start from the weights of this checkpoint (of a model of the same size), to train it further")
     return p.parse_args()
 
 
