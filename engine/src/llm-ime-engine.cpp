@@ -15,7 +15,6 @@
 #include <fcitx/instance.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx-utils/eventdispatcher.h>
-#include <fcitx-utils/i18n.h>
 #include <fcitx-utils/inputbuffer.h>
 #include <fcitx-utils/key.h>
 #include <algorithm>
@@ -1516,7 +1515,7 @@ private:
     }
 
     // The predictions for the reading typed so far as a list under it, told from the candidates of a conversion
-    // by a heading above the list and by italics; the one chosen with Down and Up is highlighted
+    // by the mark » where those have their numbers, and by italics; the one chosen with Down and Up is highlighted
     void showPredictions(InputContext *ic) {
         if (predictions_.empty()) {
             return;
@@ -1527,10 +1526,9 @@ private:
         for (int i = 0; i < (int)predictions_.size(); i++) {
             candidateList->append<PredictionWord>(this, Text(predictions_[i], TextFormatFlag::Italic), i);
         }
+        candidateList->setLabels(std::vector<std::string>(predictions_.size(), "» "));
         candidateList->setGlobalCursorIndex(predictionIndex_);
-        auto &panel = ic->inputPanel();
-        panel.setAuxUp(Text(_("Predictions (Down/Up to choose, Tab to commit)")));
-        panel.setCandidateList(std::move(candidateList));
+        ic->inputPanel().setCandidateList(std::move(candidateList));
     }
 
 public:
