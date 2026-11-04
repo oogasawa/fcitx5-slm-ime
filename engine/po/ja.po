@@ -141,3 +141,6 @@ msgstr "変換中"
 
 msgid "In both"
 msgstr "どちらでも"
+
+msgid "Predictions (Down/Up to choose, Tab to commit)"
+msgstr "予測（↓↑で選び、Tab で確定）"

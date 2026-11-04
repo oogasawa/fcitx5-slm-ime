@@ -15,6 +15,7 @@
 #include <fcitx/instance.h>
 #include <fcitx/candidatelist.h>
 #include <fcitx-utils/eventdispatcher.h>
+#include <fcitx-utils/i18n.h>
 #include <fcitx-utils/inputbuffer.h>
 #include <fcitx-utils/key.h>
 #include <algorithm>
@@ -87,6 +88,21 @@ static void takeCandidates(Segment &seg, const nlohmann::json &resp) {
 }
 
 // A candidate for the candidate list UI
+class LlmImeEngine;
+
+// A prediction in the list under the reading: clicking it commits it, as Tab does for the one chosen
+class PredictionWord : public CandidateWord {
+public:
+    PredictionWord(LlmImeEngine *engine, Text text, int index)
+        : CandidateWord(std::move(text)), engine_(engine), index_(index) {}
+
+    void select(InputContext *ic) const override;
+
+private:
+    LlmImeEngine *engine_;
+    int index_;
+};
+
 class LlmCandidate : public CandidateWord {
 public:
     LlmCandidate(Text text, int segIndex, int candIndex)
@@ -465,15 +481,21 @@ private:
             return;
         }
 
-        // Tab while typing commits the first prediction shown for the reading typed so far
-        if (key.check(Key(FcitxKey_Tab)) && !predictions_.empty() &&
-            predictionsFor_ == romajiToHiragana(state->buffer_.userInput())) {
-            std::string text = predictions_.front();
-            ic->commitString(text);
-            rememberCommitted(ic, state, text);
-            resetState(ic, state);
-            event.filterAndAccept();
-            return;
+        // While the predictions of the reading typed so far are shown, Down and Up choose one and Tab commits it
+        if (!predictions_.empty() && predictionsFor_ == romajiToHiragana(state->buffer_.userInput())) {
+            int n = static_cast<int>(predictions_.size());
+            if (key.check(Key(FcitxKey_Down)) || key.check(Key(FcitxKey_Up))) {
+                predictionIndex_ = (predictionIndex_ + (key.check(Key(FcitxKey_Down)) ? 1 : n - 1)) % n;
+                showPredictions(ic);
+                ic->updateUserInterface(UserInterfaceComponent::InputPanel);
+                event.filterAndAccept();
+                return;
+            }
+            if (key.check(Key(FcitxKey_Tab))) {
+                commitPrediction(ic, predictionIndex_);
+                event.filterAndAccept();
+                return;
+            }
         }
 
         // The model's conversion of the whole reading
@@ -1470,6 +1492,7 @@ private:
                 predicting_ = false;
                 predictions_ = found;
                 predictionsFor_ = hiragana;
+                predictionIndex_ = 0;
                 if (auto *ic = ref.get()) {
                     auto *state = ic->propertyFor(&factory_);
                     if (!state->converting_ && state->buffer_.size() > 0 &&
@@ -1492,7 +1515,8 @@ private:
         });
     }
 
-    // The predictions for the reading typed so far as a list under it; Tab commits the first
+    // The predictions for the reading typed so far as a list under it, told from the candidates of a conversion
+    // by a heading above the list and by italics; the one chosen with Down and Up is highlighted
     void showPredictions(InputContext *ic) {
         if (predictions_.empty()) {
             return;
@@ -1501,10 +1525,29 @@ private:
         candidateList->setPageSize(5);
         candidateList->setLayoutHint(CandidateLayoutHint::Vertical);
         for (int i = 0; i < (int)predictions_.size(); i++) {
-            candidateList->append<LlmCandidate>(Text(predictions_[i]), 0, i);
+            candidateList->append<PredictionWord>(this, Text(predictions_[i], TextFormatFlag::Italic), i);
         }
-        ic->inputPanel().setCandidateList(std::move(candidateList));
+        candidateList->setGlobalCursorIndex(predictionIndex_);
+        auto &panel = ic->inputPanel();
+        panel.setAuxUp(Text(_("Predictions (Down/Up to choose, Tab to commit)")));
+        panel.setCandidateList(std::move(candidateList));
     }
+
+public:
+    // Commits the prediction at `index` in place of the reading typed, if it is still the one shown
+    void commitPrediction(InputContext *ic, int index) {
+        auto *state = ic->propertyFor(&factory_);
+        if (index < 0 || index >= (int)predictions_.size() || state->converting_ || state->buffer_.size() == 0 ||
+            predictionsFor_ != romajiToHiragana(state->buffer_.userInput())) {
+            return;
+        }
+        std::string text = predictions_[index];
+        ic->commitString(text);
+        rememberCommitted(ic, state, text);
+        resetState(ic, state);
+    }
+
+private:
 
     // Every candidate of the dictionary for the reading of a bunsetsu, not only the first ones the list shows: the
     // kanji of a reading like こう are more than a hundred. The model puts the first of them in order after the text
@@ -1765,6 +1808,7 @@ private:
     std::vector<std::string> predictions_;
     std::string predictionsFor_;
     bool predicting_ = false;
+    int predictionIndex_ = 0;  // the prediction chosen with Down and Up
     TrackableObjectReference<InputContext> predictNext_;
     FactoryFor<LlmImeState> factory_;
     EventDispatcher dispatcher_;
@@ -1781,6 +1825,8 @@ private:
     std::vector<std::string> continuationCandidates_;  // current continuation candidates
     int continuationIndex_ = 0;    // currently highlighted continuation candidate
 };
+
+void PredictionWord::select(InputContext *ic) const { engine_->commitPrediction(ic, index_); }
 
 class LlmImeEngineFactory : public AddonFactory {
 public:
