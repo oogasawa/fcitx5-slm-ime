@@ -59,6 +59,13 @@
 
     <build>
         <plugins>
+            <!-- Named, because the surefire that Maven 3.8 takes when none is named (2.12.4) runs no JUnit 5 test and
+                 reports "Tests run: 0" as a success -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
