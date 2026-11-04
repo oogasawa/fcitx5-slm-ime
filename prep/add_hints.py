@@ -144,22 +144,45 @@ PIECES = re.compile(f"([{KANA}])|([^{KANA}{MARKS}]+)|(.)")
 
 def align(reading: str, texts: list[str]) -> list[str] | None:
     """The reading of each bunsetsu: kana and marks stand for themselves (katakana for hiragana), a run of kanji,
-    digits or letters for some kana. None where the reading cannot be cut so."""
-    groups = []
+    digits or letters for one kana or more, the fewest that let the rest match (as a lazy regular expression would,
+    but in time bounded by the lengths: a regular expression of many such runs can take minutes on one row). None
+    where the reading cannot be cut so."""
+    tokens: list[str | None] = []  # a kana or a mark, or None for a run
+    ends = []                      # the number of tokens up to the end of each bunsetsu
     for text in texts:
-        pattern = ""
         for kana, run, mark in PIECES.findall(text):
             if kana:
-                pattern += re.escape(chr(ord(kana) - 0x60) if "\u30a1" <= kana <= "\u30f6" else kana)
+                tokens.append(chr(ord(kana) - 0x60) if "\u30a1" <= kana <= "\u30f6" else kana)
             elif run:
-                pattern += ".+?"
+                tokens.append(None)
             else:
-                pattern += re.escape(mark)
-        if not pattern:
+                tokens.append(mark)
+        if len(tokens) == (ends[-1] if ends else 0):
             return None
-        groups.append(f"({pattern})")
-    m = re.fullmatch("".join(groups), reading)
-    return list(m.groups()) if m else None
+        ends.append(len(tokens))
+    failed: set[tuple[int, int]] = set()
+    at = [0] * (len(tokens) + 1)  # where in the reading each token starts, on the path found
+
+    def match(t: int, r: int) -> bool:
+        if t == len(tokens):
+            return r == len(reading)
+        if (t, r) in failed:
+            return False
+        at[t] = r
+        if tokens[t] is None:
+            for k in range(r + 1, len(reading) + 1):
+                if match(t + 1, k):
+                    return True
+        elif reading.startswith(tokens[t], r) and match(t + 1, r + 1):
+            return True
+        failed.add((t, r))
+        return False
+
+    if not match(0, 0):
+        return None
+    at[len(tokens)] = len(reading)
+    starts = [0] + ends
+    return [reading[at[starts[i]]:at[starts[i + 1]]] for i in range(len(texts))]
 
 
 def wrong_spelling(texts: list[str], readings: list[str], rng: random.Random) -> str | None:
