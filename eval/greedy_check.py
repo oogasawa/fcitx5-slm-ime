@@ -9,7 +9,8 @@ The optional dump-file receives one line per sentence: source TAB output (with t
 Prints the character error rate of the output with '|' removed (the conversion itself), the share of
 exact matches, the character error rate of the boundary marks alone (positions of '|' kept, other
 characters replaced by one symbol), and a few examples.
-The decoding follows the Java inference: greedy, and stop at EOS or when the output reaches the input length.
+The decoding follows the engine: greedy, and stop at EOS or when the output, without the bunsetsu marks, is one
+character longer than the reading.
 """
 
 import os
@@ -68,8 +69,13 @@ def main() -> None:
             src = torch.tensor([tokenizer.encode(source, add_bos=False, add_eos=True)], device=device)
             memory = model.encode(src, src == PAD_ID)
             output = [BOS_ID]
-            # The output is about as long as the reading: the part after the separator, if the source has context.
-            for _ in range(len(source.split(SEP_CHAR)[-1]) + 1):
+            # As the engine (Transformer::greedy): stop at EOS, when the characters written (the bunsetsu marks |
+            # left out) are one more than the reading, or after twice as many steps and 5. Counting the marks too
+            # cut the end of a reading of kana written in kana, whose output is as long as the reading.
+            limit = len(source.split(SEP_CHAR)[-1]) + 1
+            bar = tokenizer.encode("|", add_bos=False, add_eos=False)[0]
+            written = 0
+            for _ in range(2 * limit + 5):
                 tgt = torch.tensor([output], device=device)
                 mask = torch.nn.Transformer.generate_square_subsequent_mask(tgt.size(1), device=device)
                 logits = model.decode(tgt, memory, mask, tgt == PAD_ID, src == PAD_ID)
@@ -77,6 +83,10 @@ def main() -> None:
                 if next_id == EOS_ID:
                     break
                 output.append(next_id)
+                if next_id != bar:
+                    written += 1
+                if written >= limit:
+                    break
             predicted = tokenizer.decode(output[1:])
             if dump:
                 dump.write(source + "\t" + predicted + "\n")
