@@ -74,7 +74,7 @@ class PredictionsTest {
                 w("ほしい", "ほしい", "形容詞"), w("点", "てん", "名詞"), w("**", "", "補助記号")), 1, NOW);
         assertEquals(List.of("確認してほしい点"), p.predict("かくにん", 5, NOW));
         List<Readings.Word> long_ = new ArrayList<>();
-        for (int i = 0; i < 30; i++) {
+        for (int i = 0; i < 50; i++) {
             long_.add(w("あ", "あ", "名詞"));
         }
         p.learn(long_, 1, NOW);
@@ -85,14 +85,18 @@ class PredictionsTest {
     @Test
     void aTextTooLongEndsAtTheEndOfABunsetsu() {
         Predictions p = new Predictions();
-        // 修正を依頼しているドキュメントについて、何も治っていない。 is 29 characters; the text ends after 何も, the last
-        // bunsetsu that ends within 24, not inside 治っている
-        p.learn(List.of(w("修正", "しゅうせい", "名詞"), w("を", "を", "助詞"), w("依頼", "いらい", "名詞"),
-                w("し", "し", "動詞"), w("て", "て", "助詞"), w("いる", "いる", "動詞"),
-                w("ドキュメント", "どきゅめんと", "名詞"), w("について", "について", "助詞"), w("、", "", "補助記号"),
-                w("何", "なに", "代名詞"), w("も", "も", "助詞"), w("治っ", "なおっ", "動詞"), w("て", "て", "助詞"),
-                w("い", "い", "動詞"), w("ない", "ない", "助動詞"), w("。", "", "補助記号")), 1, NOW);
-        assertEquals(List.of("修正を依頼しているドキュメントについて、何も"), p.predict("しゅうせいを", 5, NOW));
+        // 語句の thirteen times (39 characters) and then 終わり: past 40, the text ends after the last の, not inside
+        // 終わり
+        List<Readings.Word> words = new ArrayList<>();
+        for (int i = 0; i < 13; i++) {
+            words.add(w("語句", "ごく", "名詞"));
+            words.add(w("の", "の", "助詞"));
+        }
+        words.add(w("終わり", "おわり", "名詞"));
+        p.learn(words, 1, NOW);
+        List<String> found = p.predict("ごくのごくの", 20, NOW);
+        assertTrue(found.contains("語句の".repeat(13)), found.toString());
+        assertTrue(found.stream().allMatch(t -> t.length() <= Predictions.LONGEST && !t.endsWith("終")));
     }
 
     @Test

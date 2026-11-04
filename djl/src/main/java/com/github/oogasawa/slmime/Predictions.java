@@ -35,7 +35,7 @@ import java.util.TreeMap;
 final class Predictions {
 
     /** The longest text of a prediction, in characters. */
-    static final int LONGEST = 24;
+    static final int LONGEST = 40;
     /** A prediction adds at least this many kana to what was typed. */
     static final int FEWEST_MORE = 2;
     static final double HALF_LIFE_DAYS = 90;

@@ -480,17 +480,19 @@ private:
             return;
         }
 
-        // While the predictions of the reading typed so far are shown, Down and Up choose one and Tab commits it
+        // While the predictions of the reading typed so far are shown, Down and Up choose one and Tab commits it;
+        // after Down or Up, Return commits the one chosen too (before, Return commits the reading as it is)
         if (!predictions_.empty() && predictionsFor_ == romajiToHiragana(state->buffer_.userInput())) {
             int n = static_cast<int>(predictions_.size());
             if (key.check(Key(FcitxKey_Down)) || key.check(Key(FcitxKey_Up))) {
                 predictionIndex_ = (predictionIndex_ + (key.check(Key(FcitxKey_Down)) ? 1 : n - 1)) % n;
+                predictionChosen_ = true;
                 showPredictions(ic);
                 ic->updateUserInterface(UserInterfaceComponent::InputPanel);
                 event.filterAndAccept();
                 return;
             }
-            if (key.check(Key(FcitxKey_Tab))) {
+            if (key.check(Key(FcitxKey_Tab)) || (predictionChosen_ && key.check(Key(FcitxKey_Return)))) {
                 commitPrediction(ic, predictionIndex_);
                 event.filterAndAccept();
                 return;
@@ -1492,6 +1494,7 @@ private:
                 predictions_ = found;
                 predictionsFor_ = hiragana;
                 predictionIndex_ = 0;
+                predictionChosen_ = false;
                 if (auto *ic = ref.get()) {
                     auto *state = ic->propertyFor(&factory_);
                     if (!state->converting_ && state->buffer_.size() > 0 &&
@@ -1807,6 +1810,7 @@ private:
     std::string predictionsFor_;
     bool predicting_ = false;
     int predictionIndex_ = 0;  // the prediction chosen with Down and Up
+    bool predictionChosen_ = false;  // whether Down or Up was pressed since the predictions came
     TrackableObjectReference<InputContext> predictNext_;
     FactoryFor<LlmImeState> factory_;
     EventDispatcher dispatcher_;
