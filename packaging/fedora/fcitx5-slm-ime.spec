@@ -2,7 +2,7 @@
 %global _vpath_srcdir engine
 
 Name:           fcitx5-slm-ime
-Version:        2.2.0~SNAPSHOT
+Version:        4.0.0~SNAPSHOT
 Release:        1%{?dist}
 Summary:        Japanese input method for fcitx5 based on a small Transformer model
 
@@ -87,6 +87,9 @@ install -D -m 644 model-release/tokenizer.json %{buildroot}%{_datadir}/slm-ime/m
 %{_datadir}/slm-ime/model/
 
 %changelog
+* Wed Nov 04 2026 Osamu Ogasawara <osamu.ogasawara@gmail.com> - 4.0.0~SNAPSHOT-1
+- The words of a dictionary read by the model as hints, and put in by rule where it cannot copy them
+
 * Tue Nov 03 2026 Osamu Ogasawara <osamu.ogasawara@gmail.com> - 2.2.0~SNAPSHOT-1
 - A choice of the user is not put where the model writes the ending of the word before (作って要るのかな)
 - A commit taken back or erased with BackSpace right after it is not learned

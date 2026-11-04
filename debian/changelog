@@ -1,3 +1,13 @@
+fcitx5-slm-ime (4.0.0~SNAPSHOT-1) UNRELEASED; urgency=medium
+
+  * The model reads, in front of the text it converts, the words of a
+    dictionary whose readings the typed reading holds (hard_words.tsv beside
+    the model: the hard words of JMdict and the medical terms of the Manbyo
+    dictionary), and the words it cannot copy are put in by rule, so that a
+    new field needs a dictionary, not a new model.
+
+ -- Osamu Ogasawara <osamu.ogasawara@gmail.com>  Wed, 04 Nov 2026 15:00:00 +0900
+
 fcitx5-slm-ime (2.2.0~SNAPSHOT-1) UNRELEASED; urgency=medium
 
   * A choice of the user is not put where the model writes the ending of the
