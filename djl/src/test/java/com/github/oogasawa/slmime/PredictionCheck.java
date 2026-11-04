@@ -22,8 +22,7 @@ public final class PredictionCheck {
         Predictions predictions = new Predictions();
         try (Readings readings = new Readings(Paths.get(args[1]))) {
             for (ConversationLogs.Said s : said) {
-                predictions.learn(readings.words(s.text()),
-                        s.byUser() ? PredictionService.USER_WEIGHT : PredictionService.MODEL_WEIGHT, s.when());
+                predictions.learn(readings.words(s.text()), PredictionService.WEIGHT, s.when());
             }
         }
         long built = System.currentTimeMillis();

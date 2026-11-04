@@ -106,8 +106,8 @@ final class ConversationLogs {
             answer = message.indexOf(ANSWER);
         }
         String question = message.substring(QUESTION.length(), answer < 0 ? message.length() : answer);
-        String user = ownWords(question);
-        if (!user.isBlank()) {
+        String user = question.strip();
+        if (!user.isEmpty()) {
             said.add(new Said(user, true, when));
         }
         if (answer >= 0) {
@@ -116,24 +116,5 @@ final class ConversationLogs {
                 said.add(new Said(model, false, when));
             }
         }
-    }
-
-    /**
-     * What the user wrote in a question, without the text of the model that the user quoted: the user puts
-     * {@code <=} (or ＜＝) after a quoted passage and writes the reply after it, so in a question that has the mark,
-     * the user's own words are the rest of each line after a mark. A question without the mark is the user's own.
-     */
-    static String ownWords(String question) {
-        if (!question.contains("<=") && !question.contains("＜＝")) {
-            return question.strip();
-        }
-        StringBuilder own = new StringBuilder();
-        for (String line : question.split("\n")) {
-            int at = Math.max(line.lastIndexOf("<="), line.lastIndexOf("＜＝"));
-            if (at >= 0) {
-                own.append(line.substring(at + 2).strip()).append('\n');
-            }
-        }
-        return own.toString().strip();
     }
 }

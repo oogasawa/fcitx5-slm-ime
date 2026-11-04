@@ -26,10 +26,8 @@ final class PredictionService {
 
     private static final Logger log = Logger.getLogger(PredictionService.class.getName());
 
-    /** What the user wrote counts more than what a model answered, and what the user commits most. */
-    static final double USER_WEIGHT = 2;
-    static final double MODEL_WEIGHT = 1;
-    static final double COMMITTED_WEIGHT = 3;
+    /** Each time a text is learned it counts the same, whoever wrote it: the user commits wrong conversions too. */
+    static final double WEIGHT = 1;
 
     private final ActorRef<Readings> readings;
     private final ActorRef<Predictions> predictions;
@@ -69,7 +67,7 @@ final class PredictionService {
             long start = System.currentTimeMillis();
             List<ConversationLogs.Said> said = conversations.newTexts();
             for (ConversationLogs.Said s : said) {
-                learn(s.text(), s.byUser() ? USER_WEIGHT : MODEL_WEIGHT, s.when());
+                learn(s.text(), WEIGHT, s.when());
             }
             int size = Actors.ask(predictions, Predictions::size);
             log.info("predictions: learned " + said.size() + " texts of the conversation logs in "
@@ -105,7 +103,7 @@ final class PredictionService {
             if (request.has("committed") && request.get("committed").isJsonPrimitive()) {
                 String text = request.get("committed").getAsString();
                 if (!text.isBlank()) {
-                    Thread.ofVirtual().start(() -> learn(text, COMMITTED_WEIGHT, System.currentTimeMillis()));
+                    Thread.ofVirtual().start(() -> learn(text, WEIGHT, System.currentTimeMillis()));
                 }
             }
         } catch (RuntimeException e) {

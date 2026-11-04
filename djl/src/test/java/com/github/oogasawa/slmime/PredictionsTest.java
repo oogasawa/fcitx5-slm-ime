@@ -54,11 +54,12 @@ class PredictionsTest {
                 w("書く", "かく", "動詞"));
         List<Readings.Word> feeling = List.of(w("感じ", "かんじ", "名詞"), w("が", "が", "助詞"),
                 w("する", "する", "動詞"));
-        p.learn(kanji, PredictionService.MODEL_WEIGHT, NOW);
-        p.learn(feeling, PredictionService.USER_WEIGHT, NOW);
+        p.learn(kanji, 1, NOW);
+        p.learn(feeling, 1, NOW);
+        p.learn(feeling, 1, NOW);
         assertEquals(List.of("感じがする", "漢字を書く"), p.predict("かんじ", 5, NOW));
         // learned again, much later, it weighs more than the other, whose weight has halved twice
-        p.learn(kanji, PredictionService.MODEL_WEIGHT, NOW + 180 * DAY);
+        p.learn(kanji, 1, NOW + 180 * DAY);
         assertEquals(List.of("漢字を書く", "感じがする"), p.predict("かんじ", 5, NOW + 180 * DAY));
         assertEquals(List.of("漢字を書く"), p.predict("かんじ", 1, NOW + 180 * DAY));
     }
@@ -105,11 +106,7 @@ class PredictionsTest {
     }
 
     @Test
-    void theUsersOwnWordsAreToldFromWhatTheyQuote() {
-        assertEquals("もう作っちまおうぜ。", ConversationLogs.ownWords("もう作っちまおうぜ。"));
-        assertEquals("これでやってみましょう\n良いです",
-                ConversationLogs.ownWords("4.x に入れるのがよいと思います。<=これでやってみましょう\n"
-                        + "1. 読み付けに Sudachi を足してよいか。\n2. 依存に足す。＜＝良いです"));
+    void aTurnGivesWhatTheUserWroteAndWhatTheModelAnswered() {
         List<ConversationLogs.Said> said = new ArrayList<>();
         ConversationLogs.split("QUESTION: どうなりましたか？\n\nANSWER: まだ学習の途中です。", 5, said);
         assertEquals(2, said.size());

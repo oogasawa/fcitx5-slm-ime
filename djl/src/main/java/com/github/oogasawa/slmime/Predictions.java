@@ -16,9 +16,8 @@ import java.util.TreeMap;
  *
  * <p>Each sentence learned gives one text from the head of each bunsetsu in it to the end of the sentence, at
  * most {@link #LONGEST} characters, kept by its reading. A reading typed so far finds the texts whose readings begin
- * with it. Each text has a weight, the sum of the weights of the times it was learned (what the user wrote counts
- * more than what a model answered), which halves every {@link #HALF_LIFE_DAYS} days after it was last learned; the
- * heaviest come first. Not shared between threads: an actor of the server holds it.</p>
+ * with it. Each text has a weight, the number of times it was learned, which halves every
+ * {@link #HALF_LIFE_DAYS} days after it was last learned; the heaviest come first. Not shared between threads: an actor of the server holds it.</p>
  */
 final class Predictions {
 
