@@ -9,7 +9,7 @@ Summary:        Japanese input method for fcitx5 based on a small Transformer mo
 License:        Apache-2.0
 URL:            https://github.com/oogasawa/fcitx5-slm-ime
 Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
-# The trained model (slm-ime-weights.bin and tokenizer.json), from the release of the same version
+# The trained model (slm-ime-weights.bin, tokenizer.json and hard_words.tsv), from the release of the same version
 Source1:        %{url}/releases/download/v%{version}/slm-ime-model-%{version}.tar.gz
 
 BuildRequires:  cmake
@@ -67,6 +67,7 @@ tar -xf %{SOURCE1} -C model-release
 %cmake_install
 install -D -m 644 model-release/slm-ime-weights.bin %{buildroot}%{_datadir}/slm-ime/model/slm-ime-weights.bin
 install -D -m 644 model-release/tokenizer.json %{buildroot}%{_datadir}/slm-ime/model/tokenizer.json
+install -D -m 644 model-release/hard_words.tsv %{buildroot}%{_datadir}/slm-ime/model/hard_words.tsv
 %find_lang %{name}
 
 %check

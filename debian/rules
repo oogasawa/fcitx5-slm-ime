@@ -1,6 +1,7 @@
 #!/usr/bin/make -f
 # Inputs that are made before the package is built:
-#   MODEL_DIR   a directory with slm-ime-weights.bin (export_weights.py) and tokenizer.json
+#   MODEL_DIR   a directory with slm-ime-weights.bin (export_weights.py), tokenizer.json and hard_words.tsv (the
+#               words given to the model as hints: prep/hard_words.py and prep/manbyo_words.py)
 MODEL_DIR ?= $(CURDIR)/model-release
 
 %:
@@ -10,6 +11,7 @@ override_dh_auto_install:
 	dh_auto_install --destdir=debian/fcitx5-slm-ime
 	install -D -m 644 $(MODEL_DIR)/slm-ime-weights.bin debian/slm-ime-model/usr/share/slm-ime/model/slm-ime-weights.bin
 	install -D -m 644 $(MODEL_DIR)/tokenizer.json debian/slm-ime-model/usr/share/slm-ime/model/tokenizer.json
+	install -D -m 644 $(MODEL_DIR)/hard_words.tsv debian/slm-ime-model/usr/share/slm-ime/model/hard_words.tsv
 
 override_dh_builddeb:
 	dh_builddeb -- -Zzstd -z9

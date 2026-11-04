@@ -13,6 +13,15 @@ Comment: The trained weights. They are trained on text of the Japanese Wikipedia
  (CC BY-SA 4.0) and of the Japanese part of FineWeb-2 (ODC-By 1.0), with readings
  written by a language model.
 
+Files: usr/share/slm-ime/model/hard_words.tsv
+Copyright: 2026 The Electronic Dictionary Research and Development Group
+           2021 NAIST Social Computing Lab
+License: CC-BY-SA-4.0
+Comment: The words given to the model as hints: the hard words of JMdict (CC BY-SA 4.0,
+ https://www.edrdg.org/edrdg/licence.html), chosen by prep/hard_words.py, and the medical
+ terms of the Manbyo dictionary of NAIST (CC BY 4.0, https://sociocom.naist.jp/manbyou-dic/),
+ chosen by prep/manbyo_words.py.
+
 License: Apache-2.0
  On Debian systems the full text is in /usr/share/common-licenses/Apache-2.0.
 
