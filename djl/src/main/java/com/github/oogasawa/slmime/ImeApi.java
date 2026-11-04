@@ -190,8 +190,13 @@ public final class ImeApi {
     private static final String HISTORY_MODE = System.getProperty("history.mode", "substitute");
     private static final boolean HISTORY_HINTS = !HISTORY_MODE.equals("substitute");
     private static final boolean HISTORY_SUBSTITUTION = !HISTORY_MODE.equals("hints");
-    /** Readings of earlier choices shorter than this are not looked for in a longer reading (as HistorySubstitution). */
-    private static final int SHORTEST_CHOICE = 3;
+    /**
+     * Readings of earlier choices shorter than this are not given as hints ({@code -Dhistory.shortestHint}): the
+     * model learned to judge choices of two bunsetsu (かんじをかく~漢字を書く), which carry the text they were chosen
+     * in, and copies a short one of one bunsetsu, as the engine learned them before, wherever its reading is
+     * (ようりょう~容量 into 要領良く).
+     */
+    private static final int SHORTEST_CHOICE = Integer.getInteger("history.shortestHint", 6);
     private static final UserHistory NO_HISTORY = UserHistory.inMemory();
 
     /** The model's answer for the reading, cut into bunsetsu, with the user's earlier choices used as the mode says. */
