@@ -161,9 +161,10 @@ public class KanjiModel {
         if (LOG_CONTEXT) {
             log.info("request input=[" + input + "] context(" + context.length() + " chars)=[" + context + "]");
         }
+        List<DictionaryHints.Hint> found = hints == null ? List.of() : hints.of(input);
         List<Integer> srcIds = hints == null
             ? SourceIds.of(tokenizer, context, input, USE_CONTEXT, CONTEXT_CHARS)
-            : SourceIds.withHints(tokenizer, context, input, CONTEXT_CHARS, hints.of(input), MAX_LEN);
+            : SourceIds.withHints(tokenizer, context, input, CONTEXT_CHARS, found, MAX_LEN);
         int srcLen = srcIds.size();
         // The text is about as long as the reading, whatever the text before the cursor. The '|' between the bunsetsu
         // are not counted: a reading of many bunsetsu with long kana tails would lose its last characters
@@ -197,7 +198,8 @@ public class KanjiModel {
                 if (nextId != barId) textLen++;
                 if (textLen >= readingLen) break;
             }
-            return tokenizer.decode(outputIds);
+            // The words the model could not copy from its hints are put in by rule (HintSubstitution)
+            return HintSubstitution.apply(input, tokenizer.decode(outputIds), found);
         }
     }
 
