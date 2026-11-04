@@ -137,16 +137,25 @@ public class KanjiModel {
      * one run with it would fail, and the engine would commit the reading unconverted.
      */
     String translate(String input, String context) throws Exception {
+        return translate(input, context, List.of());
+    }
+
+    /**
+     * As {@link #translate(String, String)}, with the user's earlier choices whose readings the input holds, given to
+     * the model as hints after the words of the dictionary ({@code reading~text}); not for a reading converted in
+     * pieces, whose pieces the choices may cross.
+     */
+    String translate(String input, String context, List<DictionaryHints.Hint> choices) throws Exception {
         int[] reading = input.codePoints().toArray();
         if (reading.length <= LongReading.LONGEST_PIECE) {
-            return translateOne(input, context);
+            return translateOne(input, context, choices);
         }
         StringBuilder answer = new StringBuilder();
         StringBuilder before = new StringBuilder(context == null ? "" : context);
         for (int start = 0; start < reading.length;) {
             int end = LongReading.pieceEnd(reading, start);
             String piece = new String(reading, start, end - start);
-            String converted = ImeApi.covered(piece, translateOne(piece, before.toString()));
+            String converted = ImeApi.covered(piece, translateOne(piece, before.toString(), List.of()));
             if (answer.length() > 0 && !converted.isEmpty()) {
                 answer.append('|');
             }
@@ -157,14 +166,21 @@ public class KanjiModel {
         return answer.toString();
     }
 
-    private String translateOne(String input, String context) throws Exception {
+    private String translateOne(String input, String context, List<DictionaryHints.Hint> choices) throws Exception {
         if (LOG_CONTEXT) {
             log.info("request input=[" + input + "] context(" + context.length() + " chars)=[" + context + "]");
         }
         List<DictionaryHints.Hint> found = hints == null ? List.of() : hints.of(input);
-        List<Integer> srcIds = hints == null
+        // the user's choices after the words of the dictionary, a text once; they are not put in by HintSubstitution
+        List<DictionaryHints.Hint> given = new ArrayList<>(found);
+        for (DictionaryHints.Hint c : choices) {
+            if (given.stream().noneMatch(h -> h.word().equals(c.word()))) {
+                given.add(c);
+            }
+        }
+        List<Integer> srcIds = hints == null && given.isEmpty()
             ? SourceIds.of(tokenizer, context, input, USE_CONTEXT, CONTEXT_CHARS)
-            : SourceIds.withHints(tokenizer, context, input, CONTEXT_CHARS, found, MAX_LEN);
+            : SourceIds.withHints(tokenizer, context, input, CONTEXT_CHARS, given, MAX_LEN);
         int srcLen = srcIds.size();
         // The text is about as long as the reading, whatever the text before the cursor. The '|' between the bunsetsu
         // are not counted: a reading of many bunsetsu with long kana tails would lose its last characters

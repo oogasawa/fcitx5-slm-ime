@@ -31,6 +31,11 @@ public final class ImeApi {
     @FunctionalInterface
     public interface Converter {
         String convert(String kana, String context) throws Exception;
+
+        /** The conversion with the user's earlier choices given to the model as hints; without them by default. */
+        default String convert(String kana, String context, List<DictionaryHints.Hint> choices) throws Exception {
+            return convert(kana, context);
+        }
     }
 
     /**
@@ -101,7 +106,7 @@ public final class ImeApi {
         JsonObject request = JsonParser.parseString(body).getAsJsonObject();
         String input = text(request, "input");
         String context = text(request, "context");
-        HistorySubstitution.Result answer = withHistory(input, covered(input, converter.convert(input, context)));
+        HistorySubstitution.Result answer = converted(input, context);
         JsonArray array = new JsonArray();
         for (int i = 0; i < answer.texts().size(); i++) {
             JsonObject segment = new JsonObject();
@@ -120,7 +125,7 @@ public final class ImeApi {
         JsonObject request = JsonParser.parseString(body).getAsJsonObject();
         String input = text(request, "input");
         String context = text(request, "context");
-        HistorySubstitution.Result answer = withHistory(input, covered(input, converter.convert(input, context)));
+        HistorySubstitution.Result answer = converted(input, context);
         String own = String.join("", answer.texts());
         JsonObject response = new JsonObject();
         response.add("candidates", strings(withAlternatives(own, String.join("", answer.originals()), input,
@@ -176,9 +181,39 @@ public final class ImeApi {
         Actors.ask(history, h -> null);
     }
 
-    /** The model's answer cut into bunsetsu, with the user's earlier choices put in, as the history is now. */
+    /**
+     * How the user's earlier choices are used ({@code -Dhistory.mode}): {@code substitute} puts them into the answer of
+     * the model wherever their reading is (HistorySubstitution); {@code hints} gives them to the model as hints
+     * {@code reading~text}, for a model trained to judge them by the text around them (prep/add_hints.py
+     * --history-table); {@code both} does both.
+     */
+    private static final String HISTORY_MODE = System.getProperty("history.mode", "substitute");
+    private static final boolean HISTORY_HINTS = !HISTORY_MODE.equals("substitute");
+    private static final boolean HISTORY_SUBSTITUTION = !HISTORY_MODE.equals("hints");
+    /** Readings of earlier choices shorter than this are not looked for in a longer reading (as HistorySubstitution). */
+    private static final int SHORTEST_CHOICE = 3;
+    private static final UserHistory NO_HISTORY = UserHistory.inMemory();
+
+    /** The model's answer for the reading, cut into bunsetsu, with the user's earlier choices used as the mode says. */
+    private HistorySubstitution.Result converted(String input, String context) throws Exception {
+        List<DictionaryHints.Hint> choices = HISTORY_HINTS ? choicesIn(input) : List.of();
+        return withHistory(input, covered(input, converter.convert(input, context, choices)));
+    }
+
+    /** The user's earlier choices whose readings the input holds, as hints {@code reading~text}. */
+    private List<DictionaryHints.Hint> choicesIn(String input) {
+        return Actors.ask(history, h -> h.matchesIn(input, SHORTEST_CHOICE)).stream()
+                .filter(m -> m.chosen() != null)
+                .map(m -> new DictionaryHints.Hint(input.substring(m.start(), m.end()), m.chosen(), '~'))
+                .toList();
+    }
+
+    /** The model's answer cut into bunsetsu, with the user's earlier choices put in when the mode says so. */
     private HistorySubstitution.Result withHistory(String input, String modelOutput) {
         List<String> segments = segmentsOf(input, modelOutput);
+        if (!HISTORY_SUBSTITUTION) {
+            return HistorySubstitution.apply(input, segments, NO_HISTORY);
+        }
         return Actors.ask(history, h -> HistorySubstitution.apply(input, segments, h));
     }
 
@@ -198,7 +233,7 @@ public final class ImeApi {
         JsonObject request = JsonParser.parseString(body).getAsJsonObject();
         String input = text(request, "input");
         String joined = String.join("",
-                withHistory(input, covered(input, converter.convert(input, text(request, "context")))).texts());
+                converted(input, text(request, "context")).texts());
         JsonObject response = new JsonObject();
         response.add("candidates", strings(List.of(joined)));
         response.addProperty("output", joined);

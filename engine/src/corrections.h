@@ -70,4 +70,36 @@ inline std::string turnedDown(const std::vector<Choice> &offered, const Choice &
     return "";
 }
 
+// What the history learns from a commit: each changed bunsetsu joined to the one before it, or to the one after it
+// when it is the first, with the text turned down for the two (empty when none was). The reading of one short
+// bunsetsu tells nothing of where it is meant (いる), that of two does (おかねが|いる, not へやに|いる), and the model
+// that reads the choices as hints judges them by it. A commit of one bunsetsu is learned as it is.
+struct Learned {
+    Choice choice;
+    std::string turnedDown;
+};
+
+inline std::vector<Learned> learnedChoices(const std::vector<Choice> &offered, const std::vector<Choice> &committed) {
+    std::vector<Learned> learned;
+    for (const auto &changed : changedChoices(offered, committed)) {
+        size_t i = 0;
+        while (committed[i].reading != changed.reading || committed[i].text != changed.text) {
+            i++;
+        }
+        std::string down = turnedDown(offered, changed);
+        if (committed.size() == 1) {
+            learned.push_back({changed, down});
+        } else if (i > 0) {
+            const Choice &before = committed[i - 1];
+            learned.push_back({{before.reading + changed.reading, before.text + changed.text},
+                               down.empty() ? "" : before.text + down});
+        } else {
+            const Choice &after = committed[1];
+            learned.push_back({{changed.reading + after.reading, changed.text + after.text},
+                               down.empty() ? "" : down + after.text});
+        }
+    }
+    return learned;
+}
+
 } // namespace llmime

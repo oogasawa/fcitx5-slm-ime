@@ -52,7 +52,17 @@ public class KanjiServer {
         model = system.actorOf("model", new KanjiModel(modelDir, tokenizerPath));
         history = system.actorOf("history", openHistory());
         anthy = system.actorOf("anthy", AnthyCandidates.loadOrNone());
-        ime = new ImeApi((kana, context) -> Actors.ask(model, m -> m.translate(kana, context)),
+        ime = new ImeApi(new ImeApi.Converter() {
+                    @Override
+                    public String convert(String kana, String context) {
+                        return Actors.ask(model, m -> m.translate(kana, context));
+                    }
+
+                    @Override
+                    public String convert(String kana, String context, List<DictionaryHints.Hint> choices) {
+                        return Actors.ask(model, m -> m.translate(kana, context, choices));
+                    }
+                },
                 (reading, limit) -> Actors.ask(anthy, a -> a.candidates(reading, limit)),
                 history,
                 KanjiModel.MOST_SCORED > 0 ? (reading, context, texts) -> Actors.ask(model, m -> m.scores(reading, context, texts))

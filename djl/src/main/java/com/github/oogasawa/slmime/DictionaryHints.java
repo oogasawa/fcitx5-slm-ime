@@ -22,10 +22,18 @@ import java.util.TreeSet;
 public final class DictionaryHints {
 
     /** One word of the dictionary found in a reading. */
-    public record Hint(String reading, String word) {
+    /**
+     * A hint: {@code mark} is = for a word of the dictionary, which the model copies, and ~ for a text the user chose
+     * before, which the model takes only where the text around it fits (prep/add_hints.py --history-table).
+     */
+    public record Hint(String reading, String word, char mark) {
+        public Hint(String reading, String word) {
+            this(reading, word, '=');
+        }
+
         @Override
         public String toString() {
-            return reading + "=" + word;
+            return reading + mark + word;
         }
     }
 

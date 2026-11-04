@@ -1269,11 +1269,12 @@ private:
             for (auto &c : committed) {
                 committedText += c.text;
             }
-            for (auto &changed : changedChoices(pending.offered, committed)) {
-                json correction = {{"reading", changed.reading}, {"chosen", changed.text}};
-                std::string down = turnedDown(pending.offered, changed);
-                if (!down.empty()) {
-                    correction["turnedDown"] = down;
+            // each changed bunsetsu joined to the one before it (or after it, for the first), so that a short reading
+            // carries the text it was chosen in (おかねが|いる, not へやに|いる)
+            for (auto &learned : learnedChoices(pending.offered, committed)) {
+                json correction = {{"reading", learned.choice.reading}, {"chosen", learned.choice.text}};
+                if (!learned.turnedDown.empty()) {
+                    correction["turnedDown"] = learned.turnedDown;
                 }
                 corrections.push_back(correction);
             }

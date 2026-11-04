@@ -55,6 +55,21 @@ int main() {
     check("into the bunsetsu before", notErased(committed, 4), {});
     check("more than the commit", notErased(committed, 9), {});
 
+    // a changed bunsetsu is learned with the one before it, the first with the one after it
+    {
+        const std::vector<Choice> shown = {{"おかねが", "お金が"}, {"いる", "居る"}, {"のかな", "のかな"}};
+        auto got = learnedChoices(shown, {{"おかねが", "お金が"}, {"いる", "要る"}, {"のかな", "のかな"}});
+        auto first = learnedChoices(shown, {{"おかねが", "おかねが"}, {"いる", "居る"}, {"のかな", "のかな"}});
+        auto alone = learnedChoices({{"いる", "居る"}}, {{"いる", "要る"}});
+        if (got.size() != 1 || got[0].choice.reading != "おかねがいる" || got[0].choice.text != "お金が要る" ||
+            got[0].turnedDown != "お金が居る" || first.size() != 1 || first[0].choice.reading != "おかねがいる" ||
+            first[0].choice.text != "おかねが居る" || first[0].turnedDown != "お金が居る" || alone.size() != 1 ||
+            alone[0].choice.text != "要る" || alone[0].turnedDown != "居る") {
+            std::printf("FAIL learnedChoices\n");
+            failures++;
+        }
+    }
+
     // the text offered for the same reading is the one turned down
     if (turnedDown(offered, {"しょう", "しょう"}) != "賞" || !turnedDown(offered, {"どうでしょう", "どうでしょう"}).empty()) {
         std::printf("FAIL turnedDown\n");

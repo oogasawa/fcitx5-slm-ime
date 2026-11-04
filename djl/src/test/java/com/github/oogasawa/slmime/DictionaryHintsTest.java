@@ -63,4 +63,13 @@ class DictionaryHintsTest {
         // Hints and reading alone too long: the source without hints
         assertEquals("い\u001f" + reading, SourceIds.text("い", reading, 100, one, 20));
     }
+
+    @Test
+    void aChoiceOfTheUserIsWrittenWithATilde() {
+        List<DictionaryHints.Hint> given = List.of(new DictionaryHints.Hint("かんせいこんすい", "肝性昏睡"),
+                new DictionaryHints.Hint("かんじをかく", "感じを書く", '~'));
+        // as prep/add_hints.py writes the rows with --history-table
+        assertEquals("かんせいこんすい=肝性昏睡 かんじをかく~感じを書く\u001f\u001fかんじをかく",
+                SourceIds.text("", "かんじをかく", 100, given, 192));
+    }
 }
