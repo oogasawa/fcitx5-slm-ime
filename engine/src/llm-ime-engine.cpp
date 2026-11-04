@@ -89,17 +89,19 @@ static void takeCandidates(Segment &seg, const nlohmann::json &resp) {
 // A candidate for the candidate list UI
 class LlmImeEngine;
 
-// A prediction in the list under the reading: clicking it commits it, as Tab does for the one chosen
+// A prediction in the list under the reading, or a continuation of the text committed: clicking it commits it, as
+// Tab does for the one chosen
 class PredictionWord : public CandidateWord {
 public:
-    PredictionWord(LlmImeEngine *engine, Text text, int index)
-        : CandidateWord(std::move(text)), engine_(engine), index_(index) {}
+    PredictionWord(LlmImeEngine *engine, Text text, int index, bool continuation = false)
+        : CandidateWord(std::move(text)), engine_(engine), index_(index), continuation_(continuation) {}
 
     void select(InputContext *ic) const override;
 
 private:
     LlmImeEngine *engine_;
     int index_;
+    bool continuation_;
 };
 
 class LlmCandidate : public CandidateWord {
@@ -289,7 +291,7 @@ public:
                 return;
             }
             if (key.check(Key(FcitxKey_Return)) || key.check(Key(FcitxKey_Tab))) {
-                selectContinuation(ic, continuationIndex_);
+                commitContinuation(ic, continuationIndex_);
                 event.filterAndAccept();
                 return;
             }
@@ -467,7 +469,8 @@ private:
 
         // Tab with empty buffer -> accept first/current continuation candidate
         if (key.check(Key(FcitxKey_Tab)) && state->buffer_.size() == 0) {
-            if (selectContinuation(ic, continuationIndex_)) {
+            if (!continuationCandidates_.empty()) {
+                commitContinuation(ic, continuationIndex_);
                 event.filterAndAccept();
                 return;
             }
@@ -1337,24 +1340,22 @@ private:
         std::string context = ic->propertyFor(&factory_)->committed_;
         if (context.empty()) return;
 
-        // Show loading indicator
-        auto &panel = ic->inputPanel();
-        Text aux;
-        aux.append("[LLM thinking...]", TextFormatFlag::DontCommit);
-        panel.setAuxDown(aux);
-        ic->updateUserInterface(UserInterfaceComponent::InputPanel);
-
         // Run in background thread; the input context may be gone when the answer comes
         auto ref = ic->watch();
         runInBackground([this, ref, context]() {
             try {
                 json req = {{"context", context}, {"n", 5}};
-                json resp = predictClient_.post("/api/continue", req);
+                llm_ime::HttpClient client(kDaemonUrl);
+                json resp = client.post("/api/continue", req);
 
                 // Schedule UI update on main thread
-                dispatcher_.schedule([this, ref, resp = std::move(resp)]() {
+                // shown only if nothing was typed or committed since it was asked for
+                dispatcher_.schedule([this, ref, context, resp = std::move(resp)]() {
                     if (auto *ic = ref.get()) {
-                        showContinuationCandidates(ic, resp);
+                        auto *state = ic->propertyFor(&factory_);
+                        if (state->buffer_.size() == 0 && !state->converting_ && state->committed_ == context) {
+                            showContinuationCandidates(ic, resp);
+                        }
                     }
                 });
             } catch (const std::exception &) {
@@ -1397,23 +1398,18 @@ private:
         auto &panel = ic->inputPanel();
         panel.reset();
 
+        // As the predictions: the mark » where the candidates of a conversion have their numbers, italics, and the one
+        // chosen with Down and Up highlighted
         auto candidateList = std::make_unique<CommonCandidateList>();
         candidateList->setPageSize(5);
         candidateList->setLayoutHint(CandidateLayoutHint::Vertical);
         for (int i = 0; i < (int)continuationCandidates_.size(); i++) {
-            std::string label = (i == continuationIndex_) ? "▶ " : "  ";
-            candidateList->append<LlmCandidate>(
-                Text(label + continuationCandidates_[i]), 0, i);
+            candidateList->append<PredictionWord>(this, Text(continuationCandidates_[i], TextFormatFlag::Italic), i,
+                                                  true);
         }
-        if (candidateList->totalSize() > 0) {
-            panel.setCandidateList(std::move(candidateList));
-        }
-
-        // Also show selected in preedit for clarity
-        Text preedit;
-        preedit.append(continuationCandidates_[continuationIndex_],
-                       TextFormatFlag::HighLight);
-        panel.setAuxDown(preedit);
+        candidateList->setLabels(std::vector<std::string>(continuationCandidates_.size(), "» "));
+        candidateList->setGlobalCursorIndex(continuationIndex_);
+        panel.setCandidateList(std::move(candidateList));
 
         ic->updateUserInterface(UserInterfaceComponent::InputPanel);
     }
@@ -1546,6 +1542,15 @@ public:
         ic->commitString(text);
         rememberCommitted(ic, state, text);
         resetState(ic, state);
+        // what came after it, so that Tab after Tab types the rest of a text written before
+        fetchContinuationAsync(ic);
+    }
+
+    // Commits the continuation at `index`, and asks for what comes after it
+    void commitContinuation(InputContext *ic, int index) {
+        if (selectContinuation(ic, index)) {
+            fetchContinuationAsync(ic);
+        }
     }
 
 private:
@@ -1828,7 +1833,13 @@ private:
     int continuationIndex_ = 0;    // currently highlighted continuation candidate
 };
 
-void PredictionWord::select(InputContext *ic) const { engine_->commitPrediction(ic, index_); }
+void PredictionWord::select(InputContext *ic) const {
+    if (continuation_) {
+        engine_->commitContinuation(ic, index_);
+    } else {
+        engine_->commitPrediction(ic, index_);
+    }
+}
 
 class LlmImeEngineFactory : public AddonFactory {
 public:

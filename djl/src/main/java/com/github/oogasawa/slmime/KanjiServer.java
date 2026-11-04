@@ -81,7 +81,8 @@ public class KanjiServer {
             }
             return ime.record(body);
         })).getFilters().add(guard);
-        server.createContext("/api/continue", ex -> answer(ex, ime::continuation)).getFilters().add(guard);
+        server.createContext("/api/continue", ex -> answer(ex, body -> predictions != null
+                ? predictions.continuations(body) : ime.continuation(body))).getFilters().add(guard);
         server.createContext("/api/predict", this::handlePredict).getFilters().add(guard);
         server.start();
         log.info("kana-kanji-server listening on :" + port);

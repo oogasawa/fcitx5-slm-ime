@@ -89,7 +89,8 @@ final class PredictionService {
             }
             int size = save();
             log.info("predictions: learned " + texts.size() + " texts of the inbox in "
-                    + (System.currentTimeMillis() - start) + " ms, " + size + " kept");
+                    + (System.currentTimeMillis() - start) + " ms, " + size + " kept, "
+                    + Actors.ask(predictions, Predictions::continuationCount) + " continuations");
             try {
                 Thread.sleep(minutes * 60_000);
             } catch (InterruptedException e) {
@@ -123,6 +124,25 @@ final class PredictionService {
             JsonObject candidate = new JsonObject();
             candidate.addProperty("candidate", text);
             out.add(candidate);
+        }
+        return out.toString();
+    }
+
+    /** {@code [{"text":..},..]}, the continuations of the text committed so far ({@code {"context":..,"n":..}}). */
+    String continuations(String body) {
+        JsonArray out = new JsonArray();
+        try {
+            JsonObject request = JsonParser.parseString(body).getAsJsonObject();
+            String context = request.has("context") ? request.get("context").getAsString() : "";
+            int n = request.has("n") ? Math.max(1, Math.min(20, request.get("n").getAsInt())) : 5;
+            for (String text : Actors.ask(predictions,
+                    p -> p.continuations(context, n, System.currentTimeMillis()))) {
+                JsonObject candidate = new JsonObject();
+                candidate.addProperty("text", text);
+                out.add(candidate);
+            }
+        } catch (RuntimeException e) {
+            // A body that is not what the engine sends has no continuations.
         }
         return out.toString();
     }

@@ -107,4 +107,67 @@ class PredictionsTest {
                 w("。", "", "補助記号")), 1, NOW);
         assertEquals(List.of("はい、それで行きましょう。"), p.predict("はい、そ", 5, NOW));
     }
+
+    /** アンチパターンを読んで反省しなさい。次から気をつけて。 */
+    private static List<Readings.Word> antiPattern() {
+        return List.of(w("アンチパターン", "あんちぱたーん", "名詞"), w("を", "を", "助詞"), w("読ん", "よん", "動詞"),
+                w("で", "で", "助詞"), w("反省", "はんせい", "名詞"), w("し", "し", "動詞"),
+                w("なさい", "なさい", "助動詞"), w("。", "", "補助記号"), w("\n", "", "空白"), w("次", "つぎ", "名詞"),
+                w("から", "から", "助詞"), w("気", "き", "名詞"), w("を", "を", "助詞"), w("つけ", "つけ", "動詞"),
+                w("て", "て", "助詞"), w("。", "", "補助記号"));
+    }
+
+    @Test
+    void theTextAfterWhatWasCommittedIsOffered() {
+        Predictions p = new Predictions();
+        p.learn(antiPattern(), 1, NOW);
+        p.learn(antiPattern(), 1, NOW);
+        p.learn(List.of(w("本", "ほん", "名詞"), w("を", "を", "助詞"), w("読ん", "よん", "動詞"), w("で", "で", "助詞"),
+                w("寝る", "ねる", "動詞"), w("。", "", "補助記号")), 1, NOW);
+        // a prediction first, then the rest Tab after Tab, the sentence learned twice before the other
+        assertEquals(List.of("アンチパターンを読んで反省しなさい。"), p.predict("あんちぱ", 1, NOW));
+        assertEquals(List.of("次から気をつけて。"), p.continuations("…アンチパターンを読んで反省しなさい。", 5, NOW));
+        // in the middle of a sentence: what came after the same six characters (本を読んで is another text before)
+        assertEquals(List.of("反省しなさい。"), p.continuations("パターンを読んで", 5, NOW));
+        assertEquals(List.of(), p.continuations("を読んで", 5, NOW));
+        // spaces and line breaks do not count; nothing after a text never seen
+        assertEquals(List.of("次から気をつけて。"), p.continuations("反省しなさい。\n", 5, NOW));
+        assertEquals(List.of(), p.continuations("まったく別の文", 5, NOW));
+        // not a piece of letters left before a word without a reading
+        assertTrue(!Predictions.isUseful("The") && !Predictions.isUseful("2") && Predictions.isUseful("pushして"));
+    }
+
+    @Test
+    void theContinuationsAreSavedAndTrimmed(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir)
+            throws Exception {
+        Predictions p = new Predictions();
+        p.learn(antiPattern(), 1, NOW);
+        java.nio.file.Path file = dir.resolve("predictions.tsv");
+        p.save(file);
+        Predictions back = Predictions.load(file);
+        assertEquals(p.continuationCount(), back.continuationCount());
+        assertEquals(List.of("次から気をつけて。"), back.continuations("反省しなさい。", 5, NOW));
+        back.keepAtMost(1, NOW);
+        assertTrue(back.continuationCount() <= 1);
+    }
+
+    @Test
+    void aTextWithAnEmojiIsKeptAndSaved(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws Exception {
+        Predictions p = new Predictions();
+        // 🎉 is two UTF-16 units: a key cut between them could not be written
+        // the six characters before 完成 are 🎉いうえおか, seven UTF-16 units
+        p.learn(List.of(w("🎉", "", "補助記号"), w("いうえおか", "いうえおか", "名詞"), w("完成", "かんせい", "名詞"),
+                w("です", "です", "助動詞"), w("。", "", "補助記号")), 1, NOW);
+        assertEquals("🎉いうえおか", Predictions.keyOf("あ🎉いうえおか"));
+        assertEquals(List.of("完成です。"), p.continuations("🎉いうえおか", 5, NOW));
+        java.nio.file.Path file = dir.resolve("predictions.tsv");
+        p.save(file);
+        Predictions back = Predictions.load(file);
+        assertEquals(p.size(), back.size());
+        assertEquals(1, back.continuationCount());
+        assertEquals(List.of("完成です。"), back.continuations("🎉いうえおか", 5, NOW));
+        // a broken line is skipped, not the file
+        java.nio.file.Files.write(file, new byte[] {(byte) 0xff, '\n'}, java.nio.file.StandardOpenOption.APPEND);
+        assertEquals(p.size(), Predictions.load(file).size());
+    }
 }
