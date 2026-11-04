@@ -125,8 +125,19 @@ std::vector<int> Converter::sourceIds(const std::u32string &input, const std::u3
     const size_t contextChars = static_cast<size_t>(model_.config().contextChars);
     const size_t longest = static_cast<size_t>(std::max(model_.config().maxLen - 4, 1));
     std::vector<Hint> found = hints_.of(input);
+    // The user's choices go to the model after the words of the dictionary, and not to substituteHints: the model is
+    // to judge them by the text before the cursor, not to have them put in
+    std::vector<Hint> all = found;
+    if (settings_.historyHints) {
+        for (const auto &m : history_.matchesIn(input, kShortestHistoryReading)) {
+            bool seen = std::any_of(all.begin(), all.end(), [&](const Hint &h) { return h.word == m.chosen; });
+            if (!seen) {
+                all.push_back({input.substr(m.start, m.end - m.start), m.chosen, U'~'});
+            }
+        }
+    }
     std::vector<int> ids;
-    for (char32_t c : hintedSource(context, input, contextChars, found, longest)) {
+    for (char32_t c : hintedSource(context, input, contextChars, all, longest)) {
         ids.push_back(c == U'\x1f' ? Tokenizer::kSep : tokenizer_.idOf(c));
     }
     ids.push_back(model::Transformer::kEos);
@@ -250,7 +261,7 @@ std::vector<std::u32string> Converter::withAlternatives(const std::u32string &ow
 
 std::vector<Converter::Segment> Converter::segmentConvert(const std::u32string &input, const std::u32string &context,
                                                           size_t wanted) {
-    Substituted answer = substituteHistory(input, modelSegments(input, translate(input, context)), history_);
+    Substituted answer = substituteHistory(input, modelSegments(input, translate(input, context)), settings_.historySubstitution ? history_ : noHistory_);
     std::vector<Segment> segments;
     for (size_t i = 0; i < answer.texts.size(); i++) {
         segments.push_back({answer.readings[i], withAlternatives(answer.texts[i], answer.originals[i],
@@ -270,7 +281,7 @@ std::vector<std::u32string> Converter::segmentCandidates(const std::u32string &i
     } else {
         translated = translate(input, context);
     }
-    Substituted answer = substituteHistory(input, modelSegments(input, translated), history_);
+    Substituted answer = substituteHistory(input, modelSegments(input, translated), settings_.historySubstitution ? history_ : noHistory_);
     std::u32string own = joined(answer.texts);
     if (output != nullptr) {
         *output = own;
@@ -279,7 +290,7 @@ std::vector<std::u32string> Converter::segmentCandidates(const std::u32string &i
 }
 
 std::u32string Converter::convert(const std::u32string &input, const std::u32string &context) {
-    return joined(substituteHistory(input, modelSegments(input, translate(input, context)), history_).texts);
+    return joined(substituteHistory(input, modelSegments(input, translate(input, context)), settings_.historySubstitution ? history_ : noHistory_).texts);
 }
 
 void Converter::record(const std::u32string &reading, const std::u32string &chosen,

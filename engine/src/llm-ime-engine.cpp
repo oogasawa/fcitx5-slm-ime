@@ -1222,11 +1222,10 @@ private:
                 }
             }
             json corrections = json::array();
-            for (auto &changed : changedChoices(pending.offered, committed)) {
-                json correction = {{"reading", changed.reading}, {"chosen", changed.text}};
-                std::string down = turnedDown(pending.offered, changed);
-                if (!down.empty()) {
-                    correction["turnedDown"] = down;
+            for (auto &learned : learnedChoices(pending.offered, committed)) {
+                json correction = {{"reading", learned.choice.reading}, {"chosen", learned.choice.text}};
+                if (!learned.turnedDown.empty()) {
+                    correction["turnedDown"] = learned.turnedDown;
                 }
                 corrections.push_back(correction);
             }

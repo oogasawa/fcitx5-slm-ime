@@ -12,9 +12,12 @@
 
 namespace llmime::conversion {
 
+// `mark` is = for a word of the dictionary, which the model copies, and ~ for a text the user chose before, which the
+// model is to take only where the text around it fits (prep/add_hints.py --history-table).
 struct Hint {
     std::u32string reading;
     std::u32string word;
+    char32_t mark = U'=';
 };
 
 class DictionaryHints {
@@ -37,7 +40,7 @@ private:
 };
 
 // The source of a model trained with hints, as text, with U+001F where the tokenizer is to put SEP:
-// "reading=word ... SEP <text before the cursor> SEP <reading>", the text before the cursor cut to its last
+// "reading=word ... reading~text ... SEP <text before the cursor> SEP <reading>", the text before the cursor cut to its last
 // `contextChars` characters and then from the left so that the source stays within `maxLen` characters. Without
 // hints, or when the hints and the reading alone are too long, "<text before the cursor> SEP <reading>".
 std::u32string hintedSource(const std::u32string &context, const std::u32string &reading, size_t contextChars,

@@ -6,6 +6,7 @@
 // it took. The history is kept in memory only, and Anthy gives the dictionary candidates.
 #include "conversion/converter.h"
 
+#include <cstdlib>
 #include <chrono>
 #include <iostream>
 #include <string>
@@ -23,6 +24,11 @@ int main(int argc, char **argv) {
     if (argc > 3) {
         settings.hintsPath = argv[3]; // the words given to the model as hints
     }
+    // How the user's choices are used, as $SLM_IME_HISTORY tells the engine: hints, substitute or both
+    const char *use = std::getenv("SLM_IME_HISTORY");
+    std::string how = use ? use : "both";
+    settings.historyHints = how != "substitute";
+    settings.historySubstitution = how != "hints";
     std::unique_ptr<CandidateSource> anthy;
     try {
         anthy = std::make_unique<AnthyCandidates>();

@@ -69,7 +69,7 @@ std::u32string hintedSource(const std::u32string &context, const std::u32string 
     }
     std::u32string head;
     for (const auto &h : hints) {
-        head += (head.empty() ? U"" : U" ") + h.reading + U"=" + h.word;
+        head += (head.empty() ? U"" : U" ") + h.reading + h.mark + h.word;
     }
     head += sep;
     if (head.size() + 1 + reading.size() > maxLen) {

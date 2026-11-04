@@ -51,6 +51,11 @@ std::shared_ptr<Converter> load() {
     if (std::filesystem::exists(hints)) {
         settings.hintsPath = hints;
     }
+    // How the user's earlier choices are used ($SLM_IME_HISTORY): given to the model as hints, put into its answers,
+    // or both
+    std::string use = environment("SLM_IME_HISTORY", "both");
+    settings.historyHints = use != "substitute";
+    settings.historySubstitution = use != "hints";
     std::unique_ptr<CandidateSource> anthy;
     try {
         anthy = std::make_unique<AnthyCandidates>();

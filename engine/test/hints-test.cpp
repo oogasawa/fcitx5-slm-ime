@@ -74,6 +74,12 @@ static void theTextBeforeTheCursorIsCut() {
     check("hints and reading alone too long", hintedSource(U"い", reading, 100, one, 20), U"い\x1f" + reading);
 }
 
+static void theUsersChoicesAreMarked() {
+    std::vector<Hint> given = {{U"かんせいこんすい", U"肝性昏睡"}, {U"かんじをかく", U"感じを書く", U'~'}};
+    check("a choice of the user written with ~", hintedSource(U"", U"かんじをかく", 100, given, 192),
+          U"かんせいこんすい=肝性昏睡 かんじをかく~感じを書く\x1f\x1fかんじをかく");
+}
+
 static void substitution() {
     check("a word the model could not write",
           substituteHints(U"あゆついしょうがすぎる", U"アユ追唱が|過ぎる", hints({"あゆついしょう=阿諛追従"})),
@@ -119,6 +125,7 @@ int main(int argc, char **argv) {
     sourcesOfTheTrainingRows(argv[1]);
     theLongestReadingsFirstAndEachWordOnce();
     theTextBeforeTheCursorIsCut();
+    theUsersChoicesAreMarked();
     substitution();
     if (failures == 0) {
         std::printf("hints-test: all passed\n");
