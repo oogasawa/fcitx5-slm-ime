@@ -18,7 +18,9 @@ hints by, and the model writes the words of the last kind without help:
     other phrases (しゅうきょうとして, じょうほうから).
 
 Usage: prep/hard_words.py JMdict_e[.gz] > hard_words.tsv
-Output: reading TAB word TAB kind (yoji or rare), sorted by reading
+Output: reading TAB word TAB kind (yoji or rare) TAB field, sorted by reading. The field is the first of the fields of
+the entry in JMdict (medicine, law, anatomy, computing...), or empty: prep/add_hints.py tells the model the field of
+a hint, so that it can match it with what the text is about.
 """
 
 import argparse
@@ -97,16 +99,17 @@ def made_of_common_words(reading: str, word: str, common: set[tuple[str, str]]) 
 
 
 def hard_words(entry: ET.Element):
-    """The (reading, word, kind) of the words of one entry that may be hard; main() leaves out more of them."""
+    """The (reading, word, kind, field) of the words of one entry that may be hard; main() leaves out more of them."""
     misc = {m.text for m in entry.iter("misc")}
     yoji = YOJIJUKUGO in misc
     if not yoji and (is_common(entry) or USUALLY_KANA in misc):
         return
+    field = next((f.text for f in entry.iter("field")), "")
     for reading, word, written in pairs(entry, spellings_of(entry)):
         if yoji:
-            yield reading, word, "yoji"
+            yield reading, word, "yoji", field
         elif len(reading) >= 4 and KANJI_ONLY.fullmatch(word) and written == reading and "ー" not in reading:
-            yield reading, word, "rare"
+            yield reading, word, "rare", field
 
 
 def main():
@@ -125,13 +128,19 @@ def main():
                 common |= common_words(element)
                 element.clear()
     common_readings = {r for r, _ in common}
-    words = {(r, w, k) for r, w, k in words
+    words = {(r, w, k, f) for r, w, k, f in words
              if k == "yoji" or (r not in common_readings
                                 and (args.keep_compounds or not made_of_common_words(r, w, common)))}
+    # A word in two entries of different fields is one word: the first field in the order of their names
+    fields: dict[tuple[str, str, str], str] = {}
+    for r, w, k, f in sorted(words):
+        if not fields.get((r, w, k)):
+            fields[(r, w, k)] = f
+    words = {(r, w, k, f) for (r, w, k), f in fields.items()}
     out = sys.stdout
-    for reading, word, kind in sorted(words):
-        out.write(f"{reading}\t{word}\t{kind}\n")
-    kinds = [k for _, _, k in words]
+    for reading, word, kind, field in sorted(words):
+        out.write(f"{reading}\t{word}\t{kind}\t{field}\n")
+    kinds = [k for _, _, k, _ in words]
     print(f"{len(words)} hard words: {kinds.count('yoji')} yoji, {kinds.count('rare')} rare", file=sys.stderr)
 
 

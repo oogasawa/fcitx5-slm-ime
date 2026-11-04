@@ -3,9 +3,11 @@
 Whether the conversion writes the hard words of the dictionary (prep/hard_words.py), with and without hints.
 
   hint_words.py make HARD_WORDS TRAIN TEST OUT_DIR [--most 3000] [--shortest 6] [--fewest-chars 3] [--hints 4]
+                    [--fields]
       Writes OUT_DIR/plain.tsv, the test rows whose correct text holds a hard word that may be a hint, and
       OUT_DIR/hinted.tsv, the same rows with the hints of prep/add_hints.py (--shortest, --fewest-chars and --hints
-      are its --shortest, --fewest-chars and --most). Every row with a word that the training rows never hold is kept,
+      are its --shortest, --fewest-chars and --most; --fields writes the field of a hint in front of it, as its --fields
+      does). Every row with a word that the training rows never hold is kept,
       and other rows up to --most in all. OUT_DIR/unseen.txt lists those words.
   hint_words.py score HARD_WORDS OUT_DIR DUMP... [--shortest 6] [--fewest-chars 3]
       For each dump of eval/greedy_check.py run on plain.tsv or hinted.tsv (all rows): the share of the hard words
@@ -52,7 +54,8 @@ def make(args):
     random.Random(1).shuffle(others)
     keep = unseen_rows + others[:max(0, args.most - len(unseen_rows))]
     by_reading = add_hints.load_hard_words(args.hard_words, args.fewest_chars)
-    add_hints.init(by_reading, args.shortest, args.hints, add_hints._max_len)
+    add_hints.init(by_reading, args.shortest, args.hints, add_hints._max_len,
+                   fields=add_hints.load_fields(args.hard_words) if args.fields else None)
     os.makedirs(args.out_dir, exist_ok=True)
     with open(os.path.join(args.out_dir, "plain.tsv"), "w", encoding="utf-8") as plain, \
             open(os.path.join(args.out_dir, "hinted.tsv"), "w", encoding="utf-8") as hinted:
@@ -100,6 +103,7 @@ def main():
     m.add_argument("--shortest", type=int, default=6)
     m.add_argument("--fewest-chars", type=int, default=3)
     m.add_argument("--hints", type=int, default=4)
+    m.add_argument("--fields", action="store_true")
     s = sub.add_parser("score")
     s.add_argument("hard_words")
     s.add_argument("out_dir")

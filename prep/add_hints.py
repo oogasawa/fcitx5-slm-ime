@@ -21,8 +21,13 @@ model still writes the words it knows when the dictionary has none: trained on r
 model wrote fewer of the words it had learned when they came without hints (95.6 % against 96.6 %). The rows are
 chosen by a checksum of their source, the same ones every time.
 
+With --fields, a hint of a word whose field the table names (its fourth column: medicine, law...) is written
+<field>:<reading>=<word>, the field in a few Japanese characters (医学:かんせいこんすい=肝性昏睡), so that the model can
+match the field of the hint with what the text is about, as a reader does: かんせい is 肝性 in a medical text and
+完成 or 慣性 elsewhere.
+
 Usage: prep/add_hints.py hard_words.tsv IN_DIR OUT_DIR [--shortest 6] [--fewest-chars 3] [--most 4] [--max-len 192]
-       [--drop-percent 0] [--rows N] [--workers 8]
+       [--drop-percent 0] [--fields] [--rows N] [--workers 8]
 Reads IN_DIR/{train,valid,test}.tsv and writes the same files to OUT_DIR, with tokenizer.json copied; --rows keeps
 every k-th training row so that about N are written.
 """
@@ -35,7 +40,30 @@ import zlib
 
 SEP = "\x1f"
 
+# The fields of JMdict (and "medicine" for the Manbyo dictionary) in a few Japanese characters
+FIELD_NAMES = {
+    "computing": "情報", "medicine": "医学", "Buddhism": "仏教", "mathematics": "数学", "law": "法律",
+    "anatomy": "解剖", "food, cooking": "料理", "linguistics": "言語", "chemistry": "化学", "physics": "物理",
+    "astronomy": "天文", "grammar": "文法", "biology": "生物", "geology": "地質", "sumo": "相撲", "music": "音楽",
+    "botany": "植物", "finance": "金融", "mineralogy": "鉱物", "military": "軍事", "Shinto": "神道",
+    "baseball": "野球", "martial arts": "武術", "philosophy": "哲学", "psychiatry": "精神医学", "business": "商業",
+    "economics": "経済", "sports": "運動", "architecture": "建築", "physiology": "生理", "Christianity": "キリスト教",
+    "geometry": "幾何", "pharmacology": "薬理", "genetics": "遺伝", "zoology": "動物", "shogi": "将棋",
+    "meteorology": "気象", "printing": "印刷", "hanafuda": "花札", "go (game)": "囲碁", "art, aesthetics": "美術",
+    "psychology": "心理", "electricity, elec. eng.": "電気", "Japanese mythology": "神話", "telecommunications": "通信",
+    "mahjong": "麻雀", "card games": "カード", "aviation": "航空", "agriculture": "農業", "noh": "能",
+    "electronics": "電子", "logic": "論理", "horse racing": "競馬", "engineering": "工学", "dentistry": "歯科",
+    "biochemistry": "生化学", "photography": "写真", "archeology": "考古", "video games": "ゲーム", "railway": "鉄道",
+    "fishing": "釣り", "statistics": "統計", "Internet": "ネット", "surgery": "外科", "Chinese mythology": "神話",
+    "embryology": "発生", "entomology": "昆虫", "trademark": "商標", "geography": "地理", "film": "映画",
+    "veterinary terms": "獣医", "kabuki": "歌舞伎", "crystallography": "結晶", "skiing": "スキー", "politics": "政治",
+    "ecology": "生態", "psychoanalysis": "精神分析", "mining": "鉱業", "stock market": "株式", "ornithology": "鳥類",
+    "clothing": "衣服", "civil engineering": "土木", "mechanical engineering": "機械", "Greek mythology": "神話",
+    "gardening, horticulture": "園芸", "professional wrestling": "プロレス", "golf": "ゴルフ", "audiovisual": "映像",
+}
+
 _words: dict[str, list[str]] = {}
+_fields: dict[str, str] = {}
 _lengths: list[int] = []
 _most = 4
 _max_len = 192
@@ -51,6 +79,17 @@ def load_hard_words(path: str, fewest_chars: int = 1) -> dict[str, list[str]]:
             if len(word) >= fewest_chars:
                 words.setdefault(reading, []).append(word)
     return words
+
+
+def load_fields(path: str) -> dict[str, str]:
+    """The field of each word of the table that has one, in Japanese (FIELD_NAMES)."""
+    fields: dict[str, str] = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            columns = line.rstrip("\n").split("\t")
+            if len(columns) > 3 and columns[3] in FIELD_NAMES:
+                fields[columns[1]] = FIELD_NAMES[columns[3]]
+    return fields
 
 
 def hints(reading: str, words: dict[str, list[str]], lengths: list[int], most: int) -> list[tuple[str, str]]:
@@ -71,7 +110,7 @@ def with_hints(source: str) -> str:
     found = hints(reading, _words, _lengths, _most)
     if not found:
         return source
-    head = " ".join(f"{r}={w}" for r, w in found) + SEP
+    head = " ".join((f"{_fields[w]}:" if w in _fields else "") + f"{r}={w}" for r, w in found) + SEP
     room = _max_len - len(head) - 1 - len(reading)
     if room < 0:
         return source
@@ -90,9 +129,10 @@ def convert_training_line(line: str) -> str:
     return convert_line(line)
 
 
-def init(words: dict[str, list[str]], shortest: int, most: int, max_len: int, drop_percent: int = 0) -> None:
-    global _words, _lengths, _most, _max_len, _drop_percent
-    _words, _most, _max_len, _drop_percent = words, most, max_len, drop_percent
+def init(words: dict[str, list[str]], shortest: int, most: int, max_len: int, drop_percent: int = 0,
+         fields: dict[str, str] | None = None) -> None:
+    global _words, _lengths, _most, _max_len, _drop_percent, _fields
+    _words, _most, _max_len, _drop_percent, _fields = words, most, max_len, drop_percent, fields or {}
     _lengths = sorted({len(r) for r in words if len(r) >= shortest}, reverse=True)
 
 
@@ -107,6 +147,7 @@ def main():
     parser.add_argument("--max-len", type=int, default=192, help="the longest source")
     parser.add_argument("--drop-percent", type=int, default=0,
                         help="the share of the training rows, in percent, left without hints")
+    parser.add_argument("--fields", action="store_true", help="write the field of a hint in front of it")
     parser.add_argument("--rows", type=int, default=0, help="about how many training rows to write (0: all)")
     parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
@@ -114,7 +155,8 @@ def main():
     words = load_hard_words(args.hard_words, args.fewest_chars)
     os.makedirs(args.out_dir, exist_ok=True)
     shutil.copy(os.path.join(args.in_dir, "tokenizer.json"), args.out_dir)
-    with multiprocessing.Pool(args.workers, init, (words, args.shortest, args.most, args.max_len, args.drop_percent)) as pool:
+    with multiprocessing.Pool(args.workers, init, (words, args.shortest, args.most, args.max_len, args.drop_percent,
+                                                      load_fields(args.hard_words) if args.fields else None)) as pool:
         for name in ("train", "valid", "test"):
             with open(os.path.join(args.in_dir, f"{name}.tsv"), encoding="utf-8") as f:
                 lines = f.readlines()
