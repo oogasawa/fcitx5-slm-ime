@@ -16,8 +16,13 @@ with the table of hard_words.py --keep-compounds, 10 % of the rows with hints ha
 and most rows had only wrong ones with readings of 4 kana. The text before the cursor is cut from the left so that
 the source stays within --max-len characters.
 
+With --drop-percent, that share of the training rows that would get hints keeps the form without hints, so that the
+model still writes the words it knows when the dictionary has none: trained on rows that all had their hints, the
+model wrote fewer of the words it had learned when they came without hints (95.6 % against 96.6 %). The rows are
+chosen by a checksum of their source, the same ones every time.
+
 Usage: prep/add_hints.py hard_words.tsv IN_DIR OUT_DIR [--shortest 6] [--fewest-chars 3] [--most 4] [--max-len 192]
-       [--rows N] [--workers 8]
+       [--drop-percent 0] [--rows N] [--workers 8]
 Reads IN_DIR/{train,valid,test}.tsv and writes the same files to OUT_DIR, with tokenizer.json copied; --rows keeps
 every k-th training row so that about N are written.
 """
@@ -26,6 +31,7 @@ import argparse
 import multiprocessing
 import os
 import shutil
+import zlib
 
 SEP = "\x1f"
 
@@ -33,6 +39,7 @@ _words: dict[str, list[str]] = {}
 _lengths: list[int] = []
 _most = 4
 _max_len = 192
+_drop_percent = 0
 
 
 def load_hard_words(path: str, fewest_chars: int = 1) -> dict[str, list[str]]:
@@ -76,9 +83,16 @@ def convert_line(line: str) -> str:
     return with_hints(source) + "\t" + target + "\n"
 
 
-def init(words: dict[str, list[str]], shortest: int, most: int, max_len: int) -> None:
-    global _words, _lengths, _most, _max_len
-    _words, _most, _max_len = words, most, max_len
+def convert_training_line(line: str) -> str:
+    source = line.split("\t", 1)[0]
+    if zlib.crc32(source.encode("utf-8")) % 100 < _drop_percent:
+        return line if line.endswith("\n") else line + "\n"
+    return convert_line(line)
+
+
+def init(words: dict[str, list[str]], shortest: int, most: int, max_len: int, drop_percent: int = 0) -> None:
+    global _words, _lengths, _most, _max_len, _drop_percent
+    _words, _most, _max_len, _drop_percent = words, most, max_len, drop_percent
     _lengths = sorted({len(r) for r in words if len(r) >= shortest}, reverse=True)
 
 
@@ -91,6 +105,8 @@ def main():
     parser.add_argument("--fewest-chars", type=int, default=3, help="the shortest word of a hint, in characters")
     parser.add_argument("--most", type=int, default=4, help="the most hints of a row")
     parser.add_argument("--max-len", type=int, default=192, help="the longest source")
+    parser.add_argument("--drop-percent", type=int, default=0,
+                        help="the share of the training rows, in percent, left without hints")
     parser.add_argument("--rows", type=int, default=0, help="about how many training rows to write (0: all)")
     parser.add_argument("--workers", type=int, default=8)
     args = parser.parse_args()
@@ -98,13 +114,13 @@ def main():
     words = load_hard_words(args.hard_words, args.fewest_chars)
     os.makedirs(args.out_dir, exist_ok=True)
     shutil.copy(os.path.join(args.in_dir, "tokenizer.json"), args.out_dir)
-    with multiprocessing.Pool(args.workers, init, (words, args.shortest, args.most, args.max_len)) as pool:
+    with multiprocessing.Pool(args.workers, init, (words, args.shortest, args.most, args.max_len, args.drop_percent)) as pool:
         for name in ("train", "valid", "test"):
             with open(os.path.join(args.in_dir, f"{name}.tsv"), encoding="utf-8") as f:
                 lines = f.readlines()
             if name == "train" and args.rows:
                 lines = lines[::max(1, len(lines) // args.rows)]
-            out = pool.map(convert_line, lines, chunksize=2000)
+            out = pool.map(convert_training_line if name == "train" else convert_line, lines, chunksize=2000)
             with open(os.path.join(args.out_dir, f"{name}.tsv"), "w", encoding="utf-8") as f:
                 f.writelines(out)
             hinted = sum(1 for line in out if line.split("\t", 1)[0].count(SEP) == 2)
