@@ -2,7 +2,8 @@
 // The conversion inside the engine. It answers the requests that the engine sent to the conversion server of
 // version 1 (post("/api/segment-convert", ...) and the others), so that the engine calls it as it called the server.
 //
-// The model is in $SLM_IME_MODEL_DIR, or /usr/share/slm-ime/model: slm-ime-weights.bin and tokenizer.json. The
+// The model is in $SLM_IME_MODEL_DIR, or /usr/share/slm-ime/model: slm-ime-weights.bin and tokenizer.json, and the
+// words given to it as hints, hard_words.tsv, if it was trained with them ($SLM_IME_HINTS names another table). The
 // choices of the user are kept in $XDG_DATA_HOME/slm-ime/user_history.tsv, the file of version 1. Anthy gives the
 // dictionary candidates; without Anthy there are none.
 #include <nlohmann/json.hpp>

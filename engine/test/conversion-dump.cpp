@@ -1,7 +1,7 @@
 // Answers requests of the engine with the C++ conversion, to compare its answers with those of the conversion
 // server of version 1 (eval/compare_cpp_java.py).
 //
-// Usage: conversion-dump <weights> <tokenizer.json> < requests > answers
+// Usage: conversion-dump <weights> <tokenizer.json> [hard_words.tsv] < requests > answers
 // Every input line is {"path": "/api/...", "request": {...}}; every output line is the answer, JSON, and the time
 // it took. The history is kept in memory only, and Anthy gives the dictionary candidates.
 #include "conversion/converter.h"
@@ -14,12 +14,15 @@ using namespace llmime::conversion;
 
 int main(int argc, char **argv) {
     if (argc < 3) {
-        std::cerr << "usage: conversion-dump <weights> <tokenizer.json> < requests\n";
+        std::cerr << "usage: conversion-dump <weights> <tokenizer.json> [hard_words.tsv] < requests\n";
         return 2;
     }
     ConverterSettings settings;
     settings.weightsPath = argv[1];
     settings.tokenizerPath = argv[2];
+    if (argc > 3) {
+        settings.hintsPath = argv[3]; // the words given to the model as hints
+    }
     std::unique_ptr<CandidateSource> anthy;
     try {
         anthy = std::make_unique<AnthyCandidates>();

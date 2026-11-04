@@ -46,6 +46,11 @@ std::shared_ptr<Converter> load() {
     settings.weightsPath = model + "/slm-ime-weights.bin";
     settings.tokenizerPath = model + "/tokenizer.json";
     settings.historyPath = history.string();
+    // The words given to the model as hints, when the model has them ($SLM_IME_HINTS, or hard_words.tsv beside it)
+    std::string hints = environment("SLM_IME_HINTS", model + "/hard_words.tsv");
+    if (std::filesystem::exists(hints)) {
+        settings.hintsPath = hints;
+    }
     std::unique_ptr<CandidateSource> anthy;
     try {
         anthy = std::make_unique<AnthyCandidates>();

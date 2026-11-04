@@ -5,6 +5,7 @@
 // It answers the requests that the engine sent to the conversion server of version 1, with the same JSON, so that
 // the engine changes little (post()). The model is read once; the methods can be called from several threads.
 #include "conversion/candidate-source.h"
+#include "conversion/dictionary-hints.h"
 #include "conversion/tokenizer.h"
 #include "conversion/user-history.h"
 #include "model/transformer.h"
@@ -21,6 +22,7 @@ struct ConverterSettings {
     std::string weightsPath;     // export_weights.py
     std::string tokenizerPath;   // tokenizer.json
     std::string historyPath;     // the choices of the user; empty: kept in memory only
+    std::string hintsPath;       // the words given to the model as hints (prep/hard_words.py); empty: no hints
     size_t mostScored = 20;      // how many dictionary candidates of a bunsetsu the model puts in order
     double sourceWeight = 0;     // how much the order of the dictionary counts against the scores of the model
 };
@@ -58,7 +60,13 @@ public:
     std::u32string translate(const std::u32string &input, const std::u32string &context) const;
 
 private:
-    std::vector<int> sourceIds(const std::u32string &input, const std::u32string &context) const;
+    // The source of the model, with the hints of the dictionary in front when there are any (`hints` gets them).
+    std::vector<int> sourceIds(const std::u32string &input, const std::u32string &context,
+                               std::vector<Hint> *hints = nullptr) const;
+    // The model's conversion of a reading short enough for one run, with the words of its hints put in
+    // (substituteHints); `memory` gets the encoded source, for the scores of the dictionary candidates.
+    std::u32string run(const std::u32string &input, const std::u32string &context,
+                       std::shared_ptr<const model::Transformer::Memory> *memory = nullptr) const;
     std::u32string translate(const model::Transformer::Memory &memory, const std::u32string &input) const;
     std::vector<std::u32string> modelSegments(const std::u32string &input, const std::u32string &translated) const;
     // `memory`: the encoded reading and context, to score the dictionary candidates with; null: not scored.
@@ -70,6 +78,7 @@ private:
     Tokenizer tokenizer_;
     model::Transformer model_;
     UserHistory history_;
+    DictionaryHints hints_;
     std::unique_ptr<CandidateSource> source_;
     int barId_;
 };

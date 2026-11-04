@@ -42,6 +42,8 @@ add_library(slm-ime-conversion STATIC
     src/conversion/history-substitution.cpp
     src/conversion/anthy-candidates.cpp
     src/conversion/converter.cpp
+    src/conversion/dictionary-hints.cpp
+    src/conversion/hint-substitution.cpp
 )
 target_link_libraries(slm-ime-conversion PUBLIC slm-ime-model PkgConfig::ANTHY)
 set_target_properties(slm-ime-conversion PROPERTIES POSITION_INDEPENDENT_CODE ON)
@@ -131,6 +133,9 @@ add_test(NAME slm-ime-config-test COMMAND slm-ime-config-test)
 add_executable(conversion-test test/conversion-test.cpp)
 target_link_libraries(conversion-test PRIVATE slm-ime-conversion)
 add_test(NAME conversion-test COMMAND conversion-test)
+add_executable(hints-test test/hints-test.cpp)
+target_link_libraries(hints-test PRIVATE slm-ime-conversion)
+add_test(NAME hints-test COMMAND hints-test ${CMAKE_CURRENT_SOURCE_DIR}/test/data/hints)
 
 # A damaged weights file is refused, never read past its end (a tiny model is written by the test)
 add_executable(weights-test test/weights-test.cpp)

@@ -1,5 +1,6 @@
 #include "conversion/converter.h"
 
+#include "conversion/hint-substitution.h"
 #include "conversion/history-substitution.h"
 #include "conversion/reading-aligner.h"
 #include "conversion/text.h"
@@ -113,25 +114,42 @@ Converter::Converter(const ConverterSettings &settings, std::unique_ptr<Candidat
       tokenizer_(settings.tokenizerPath),
       model_(settings.weightsPath),
       history_(settings.historyPath.empty() ? UserHistory() : UserHistory(settings.historyPath)),
+      hints_(settings.hintsPath.empty() ? DictionaryHints() : DictionaryHints(settings.hintsPath)),
       source_(std::move(source)),
       barId_(tokenizer_.idOf(U'|')) {}
 
-std::vector<int> Converter::sourceIds(const std::u32string &input, const std::u32string &context) const {
-    // As many characters before the cursor as the model was trained to read (in the header of its weights).
+std::vector<int> Converter::sourceIds(const std::u32string &input, const std::u32string &context,
+                                      std::vector<Hint> *hints) const {
+    // As many characters before the cursor as the model was trained to read (in the header of its weights), and no
+    // more characters in all than the longest source it was trained with (its positions are that many and 4 more).
     const size_t contextChars = static_cast<size_t>(model_.config().contextChars);
-    std::u32string tail = context.size() > contextChars ? context.substr(context.size() - contextChars) : context;
-    std::vector<int> ids = tokenizer_.encode(tail);
-    ids.push_back(Tokenizer::kSep);
-    for (int id : tokenizer_.encode(input)) {
-        ids.push_back(id);
+    const size_t longest = static_cast<size_t>(std::max(model_.config().maxLen - 4, 1));
+    std::vector<Hint> found = hints_.of(input);
+    std::vector<int> ids;
+    for (char32_t c : hintedSource(context, input, contextChars, found, longest)) {
+        ids.push_back(c == U'\x1f' ? Tokenizer::kSep : tokenizer_.idOf(c));
     }
     ids.push_back(model::Transformer::kEos);
+    if (hints != nullptr) {
+        *hints = std::move(found);
+    }
     return ids;
+}
+
+std::u32string Converter::run(const std::u32string &input, const std::u32string &context,
+                              std::shared_ptr<const model::Transformer::Memory> *memory) const {
+    std::vector<Hint> hints;
+    auto encoded = model_.encode(sourceIds(input, context, &hints));
+    if (memory != nullptr) {
+        *memory = encoded;
+    }
+    // The words the model could not copy from its hints are put in by rule
+    return substituteHints(input, translate(*encoded, input), hints);
 }
 
 std::u32string Converter::translate(const std::u32string &input, const std::u32string &context) const {
     if (input.size() <= kLongestPiece) {
-        return translate(*model_.encode(sourceIds(input, context)), input);
+        return run(input, context);
     }
     // A long reading in pieces, each after the text before it and the conversion of the pieces before it
     std::u32string answer;
@@ -139,7 +157,7 @@ std::u32string Converter::translate(const std::u32string &input, const std::u32s
     for (size_t start = 0; start < input.size();) {
         size_t end = pieceEnd(input, start);
         std::u32string piece = input.substr(start, end - start);
-        std::u32string converted = covered(piece, translate(*model_.encode(sourceIds(piece, before)), piece));
+        std::u32string converted = covered(piece, run(piece, before));
         if (!answer.empty() && !converted.empty()) {
             answer.push_back(U'|');
         }
@@ -248,8 +266,7 @@ std::vector<std::u32string> Converter::segmentCandidates(const std::u32string &i
     std::shared_ptr<const model::Transformer::Memory> memory;
     std::u32string translated;
     if (input.size() <= kLongestPiece) {
-        memory = model_.encode(sourceIds(input, context));
-        translated = translate(*memory, input);
+        translated = run(input, context, &memory);
     } else {
         translated = translate(input, context);
     }
