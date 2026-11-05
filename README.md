@@ -28,15 +28,8 @@ in versions 1 and 2.
 On the test rows the character error rate is 3.34 % (version 2: 3.59 %), and on AJIMEE-Bench 64.0 % of the items are
 converted exactly (version 2: 61.0 %).
 
-Version 3 also offers **predictions**, which are experimental: they work as described here, but are not yet good
-enough to be of much help (the continuations often come from other conversations and stop after two or three).
-After five kana or more, the input method offers the rest of a sentence written before whose reading begins with
-them (おせわに: お世話になっております。), in a list marked » in italics. Tab commits the one chosen, and then the
-text that came after it is offered, so that a sentence written often is typed with a few kana and Tab after Tab.
-The texts are those the user commits and those other programs put in the inbox `$XDG_DATA_HOME/slm-ime/learn`
-(files of `{"text": ..., "time": ...}` lines); they are kept in `$XDG_DATA_HOME/slm-ime/predictions.tsv`, at most
-200,000. Sudachi with SudachiDict gives their readings; the predictions are on when `-Dpredict.dict` names its
-`system.dic`.
+Version 3 also offers **predictions** of the text being typed, from text written before. They are experimental:
+not yet good enough to be of much help.
 
 A Japanese kana-to-kanji input method editor (IME) powered by a small language model (SLM): a character-level
 Transformer (encoder-decoder) of about 60 million parameters that converts hiragana into kanji-kana text. The model
