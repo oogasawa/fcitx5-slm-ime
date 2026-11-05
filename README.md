@@ -28,7 +28,9 @@ in versions 1 and 2.
 On the test rows the character error rate is 3.34 % (version 2: 3.59 %), and on AJIMEE-Bench 64.0 % of the items are
 converted exactly (version 2: 61.0 %).
 
-Version 3 also offers **predictions**: after five kana or more, the rest of a sentence written before whose reading
+Version 3 also offers **predictions**, which are experimental: they work as described here, but are not yet good
+enough to be of much help (the continuations often come from other conversations and stop after two or three). After
+five kana or more, the rest of a sentence written before whose reading
 begins with them (おせわに: お世話になっております。), in a list marked » in italics; Tab commits the one chosen,
 and then the text that came after it is offered, so that a sentence written often is typed with a few kana and Tab
 after Tab. The texts are those the user commits and those other programs put in the inbox
