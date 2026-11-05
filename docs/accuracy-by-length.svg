@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 590" width="900" height="590" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 870 575" width="870" height="575" font-family="system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
 <title>Accuracy of conversion by the length of the reading: SLM-IME, Mozc and Anthy</title>
-<rect width="900" height="590" fill="#ffffff"/>
+<rect width="870" height="575" fill="#ffffff"/>
 <text x="20" y="24" font-size="15" font-weight="600" fill="#2b2b2b">Accuracy by the length of the reading</text>
 <g font-size="12" fill="#2b2b2b"><line x1="600" y1="20" x2="620" y2="20" stroke="#2a78d6" stroke-width="2"/><circle cx="610" cy="20" r="4" fill="#2a78d6" stroke="#ffffff" stroke-width="2"/><text x="626" y="24">SLM-IME</text><line x1="690" y1="20" x2="710" y2="20" stroke="#eb6834" stroke-width="2"/><circle cx="700" cy="20" r="4" fill="#eb6834" stroke="#ffffff" stroke-width="2"/><text x="716" y="24">Mozc</text><line x1="780" y1="20" x2="800" y2="20" stroke="#1baf7a" stroke-width="2"/><circle cx="790" cy="20" r="4" fill="#1baf7a" stroke="#ffffff" stroke-width="2"/><text x="806" y="24">Anthy</text></g>
 <g transform="translate(0,50)">
@@ -28,16 +28,16 @@
 <text x="282.5" y="206">50–59</text>
 <text x="360" y="206">60+</text>
 <text x="205" y="223">Length of the reading (characters)</text></g>
-<polyline fill="none" stroke="#1baf7a" stroke-width="2" points="50,151.9 127.5,137.8 205,119.2 282.5,100.9 360,68.5"/>
-<polyline fill="none" stroke="#eb6834" stroke-width="2" points="50,172.3 127.5,164.8 205,152.2 282.5,145.3 360,133.9"/>
-<polyline fill="none" stroke="#2a78d6" stroke-width="2" points="50,176.8 127.5,172.6 205,167.5 282.5,166.9 360,157.6"/>
-<g fill="#1baf7a" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="151.9" r="4"/><circle cx="127.5" cy="137.8" r="4"/><circle cx="205" cy="119.2" r="4"/><circle cx="282.5" cy="100.9" r="4"/><circle cx="360" cy="68.5" r="4"/></g>
-<g fill="#eb6834" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="172.3" r="4"/><circle cx="127.5" cy="164.8" r="4"/><circle cx="205" cy="152.2" r="4"/><circle cx="282.5" cy="145.3" r="4"/><circle cx="360" cy="133.9" r="4"/></g>
-<g fill="#2a78d6" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="176.8" r="4"/><circle cx="127.5" cy="172.6" r="4"/><circle cx="205" cy="167.5" r="4"/><circle cx="282.5" cy="166.9" r="4"/><circle cx="360" cy="157.6" r="4"/></g>
+<polyline fill="none" stroke="#1baf7a" stroke-width="2" points="50,152.2 127.5,137.8 205,118.3 282.5,101.5 360,67.3"/>
+<polyline fill="none" stroke="#eb6834" stroke-width="2" points="50,172.6 127.5,164.2 205,151.0 282.5,145.0 360,133.3"/>
+<polyline fill="none" stroke="#2a78d6" stroke-width="2" points="50,179.2 127.5,174.4 205,169.3 282.5,167.8 360,163.0"/>
+<g fill="#1baf7a" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="152.2" r="4"/><circle cx="127.5" cy="137.8" r="4"/><circle cx="205" cy="118.3" r="4"/><circle cx="282.5" cy="101.5" r="4"/><circle cx="360" cy="67.3" r="4"/></g>
+<g fill="#eb6834" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="172.6" r="4"/><circle cx="127.5" cy="164.2" r="4"/><circle cx="205" cy="151.0" r="4"/><circle cx="282.5" cy="145.0" r="4"/><circle cx="360" cy="133.3" r="4"/></g>
+<g fill="#2a78d6" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="179.2" r="4"/><circle cx="127.5" cy="174.4" r="4"/><circle cx="205" cy="169.3" r="4"/><circle cx="282.5" cy="167.8" r="4"/><circle cx="360" cy="163.0" r="4"/></g>
 <g font-size="11" fill="#2b2b2b">
-<text x="368" y="72.5">Anthy 4.05</text>
-<text x="368" y="137.9">Mozc 1.87</text>
-<text x="368" y="161.6">SLM-IME 1.08</text>
+<text x="368" y="71.3">Anthy 4.09</text>
+<text x="368" y="137.3">Mozc 1.89</text>
+<text x="368" y="167.0">SLM-IME 0.90</text>
 </g>
 </g>
 <g transform="translate(430,50)">
@@ -67,14 +67,14 @@
 <text x="205" y="223">Length of the reading (characters)</text></g>
 <polyline fill="none" stroke="#1baf7a" stroke-width="2" points="50,155.8 127.5,140.5 205,128.8 282.5,119.2 360,93.4"/>
 <polyline fill="none" stroke="#eb6834" stroke-width="2" points="50,173.2 127.5,166.3 205,159.4 282.5,153.4 360,148.6"/>
-<polyline fill="none" stroke="#2a78d6" stroke-width="2" points="50,175.6 127.5,169.3 205,166.3 282.5,167.8 360,163.9"/>
+<polyline fill="none" stroke="#2a78d6" stroke-width="2" points="50,178.3 127.5,173.2 205,169.3 282.5,170.2 360,167.5"/>
 <g fill="#1baf7a" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="155.8" r="4"/><circle cx="127.5" cy="140.5" r="4"/><circle cx="205" cy="128.8" r="4"/><circle cx="282.5" cy="119.2" r="4"/><circle cx="360" cy="93.4" r="4"/></g>
 <g fill="#eb6834" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="173.2" r="4"/><circle cx="127.5" cy="166.3" r="4"/><circle cx="205" cy="159.4" r="4"/><circle cx="282.5" cy="153.4" r="4"/><circle cx="360" cy="148.6" r="4"/></g>
-<g fill="#2a78d6" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="175.6" r="4"/><circle cx="127.5" cy="169.3" r="4"/><circle cx="205" cy="166.3" r="4"/><circle cx="282.5" cy="167.8" r="4"/><circle cx="360" cy="163.9" r="4"/></g>
+<g fill="#2a78d6" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="178.3" r="4"/><circle cx="127.5" cy="173.2" r="4"/><circle cx="205" cy="169.3" r="4"/><circle cx="282.5" cy="170.2" r="4"/><circle cx="360" cy="167.5" r="4"/></g>
 <g font-size="11" fill="#2b2b2b">
 <text x="368" y="97.4">Anthy 3.22</text>
 <text x="368" y="152.6">Mozc 1.38</text>
-<text x="368" y="167.9">SLM-IME 0.87</text>
+<text x="368" y="171.5">SLM-IME 0.75</text>
 </g>
 </g>
 <g transform="translate(0,300)">
@@ -100,16 +100,16 @@
 <text x="282.5" y="206">50–59</text>
 <text x="360" y="206">60+</text>
 <text x="205" y="223">Length of the reading (characters)</text></g>
-<polyline fill="none" stroke="#1baf7a" stroke-width="2" points="50,131.9 127.5,150.8 205,172.8 282.5,175.2 360,182.9"/>
-<polyline fill="none" stroke="#eb6834" stroke-width="2" points="50,83.1 127.5,104.3 205,129.8 282.5,132.4 360,147.6"/>
-<polyline fill="none" stroke="#2a78d6" stroke-width="2" points="50,66.1 127.5,80.5 205,94.4 282.5,91.6 360,106.8"/>
-<g fill="#1baf7a" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="131.9" r="4"/><circle cx="127.5" cy="150.8" r="4"/><circle cx="205" cy="172.8" r="4"/><circle cx="282.5" cy="175.2" r="4"/><circle cx="360" cy="182.9" r="4"/></g>
-<g fill="#eb6834" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="83.1" r="4"/><circle cx="127.5" cy="104.3" r="4"/><circle cx="205" cy="129.8" r="4"/><circle cx="282.5" cy="132.4" r="4"/><circle cx="360" cy="147.6" r="4"/></g>
-<g fill="#2a78d6" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="66.1" r="4"/><circle cx="127.5" cy="80.5" r="4"/><circle cx="205" cy="94.4" r="4"/><circle cx="282.5" cy="91.6" r="4"/><circle cx="360" cy="106.8" r="4"/></g>
+<polyline fill="none" stroke="#1baf7a" stroke-width="2" points="50,131.5 127.5,151.2 205,173.7 282.5,176.3 360,183.4"/>
+<polyline fill="none" stroke="#eb6834" stroke-width="2" points="50,82.8 127.5,105.6 205,132.1 282.5,133.2 360,146.1"/>
+<polyline fill="none" stroke="#2a78d6" stroke-width="2" points="50,56.1 127.5,70.8 205,90.4 282.5,90.2 360,95.5"/>
+<g fill="#1baf7a" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="131.5" r="4"/><circle cx="127.5" cy="151.2" r="4"/><circle cx="205" cy="173.7" r="4"/><circle cx="282.5" cy="176.3" r="4"/><circle cx="360" cy="183.4" r="4"/></g>
+<g fill="#eb6834" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="82.8" r="4"/><circle cx="127.5" cy="105.6" r="4"/><circle cx="205" cy="132.1" r="4"/><circle cx="282.5" cy="133.2" r="4"/><circle cx="360" cy="146.1" r="4"/></g>
+<g fill="#2a78d6" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="56.1" r="4"/><circle cx="127.5" cy="70.8" r="4"/><circle cx="205" cy="90.4" r="4"/><circle cx="282.5" cy="90.2" r="4"/><circle cx="360" cy="95.5" r="4"/></g>
 <g font-size="11" fill="#2b2b2b">
-<text x="368" y="110.8">SLM-IME 44.4%</text>
-<text x="368" y="151.6">Mozc 22.6%</text>
-<text x="368" y="186.9">Anthy 3.8%</text>
+<text x="368" y="99.5">SLM-IME 50.4%</text>
+<text x="368" y="150.1">Mozc 23.4%</text>
+<text x="368" y="187.4">Anthy 3.5%</text>
 </g>
 </g>
 <g transform="translate(430,300)">
@@ -137,16 +137,15 @@
 <text x="205" y="223">Length of the reading (characters)</text></g>
 <polyline fill="none" stroke="#1baf7a" stroke-width="2" points="50,128.9 127.5,151.8 205,164.7 282.5,163.2 360,177.8"/>
 <polyline fill="none" stroke="#eb6834" stroke-width="2" points="50,80.3 127.5,97.4 205,110.9 282.5,116.9 360,133.0"/>
-<polyline fill="none" stroke="#2a78d6" stroke-width="2" points="50,70.8 127.5,89.5 205,90.6 282.5,82.9 360,104.3"/>
+<polyline fill="none" stroke="#2a78d6" stroke-width="2" points="50,58.9 127.5,74.1 205,84.6 282.5,78.1 360,96.2"/>
 <g fill="#1baf7a" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="128.9" r="4"/><circle cx="127.5" cy="151.8" r="4"/><circle cx="205" cy="164.7" r="4"/><circle cx="282.5" cy="163.2" r="4"/><circle cx="360" cy="177.8" r="4"/></g>
 <g fill="#eb6834" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="80.3" r="4"/><circle cx="127.5" cy="97.4" r="4"/><circle cx="205" cy="110.9" r="4"/><circle cx="282.5" cy="116.9" r="4"/><circle cx="360" cy="133.0" r="4"/></g>
-<g fill="#2a78d6" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="70.8" r="4"/><circle cx="127.5" cy="89.5" r="4"/><circle cx="205" cy="90.6" r="4"/><circle cx="282.5" cy="82.9" r="4"/><circle cx="360" cy="104.3" r="4"/></g>
+<g fill="#2a78d6" stroke="#ffffff" stroke-width="2"><circle cx="50" cy="58.9" r="4"/><circle cx="127.5" cy="74.1" r="4"/><circle cx="205" cy="84.6" r="4"/><circle cx="282.5" cy="78.1" r="4"/><circle cx="360" cy="96.2" r="4"/></g>
 <g font-size="11" fill="#2b2b2b">
-<text x="368" y="108.3">SLM-IME 45.7%</text>
+<text x="368" y="100.2">SLM-IME 50.0%</text>
 <text x="368" y="137.0">Mozc 30.4%</text>
 <text x="368" y="181.8">Anthy 6.5%</text>
 </g>
 </g>
-<text x="20" y="560" font-size="11" fill="#6b6b66">Sentences per band (20–29 / 30–39 / 40–49 / 50–59 / 60+): Wikipedia 726 / 363 / 196 / 101 / 133, FineWeb-2 685 / 338 / 185 / 77 / 92.</text>
-<text x="20" y="576" font-size="11" fill="#6b6b66">A place to correct is a run of characters that differs from the correct text.</text>
+<text x="20" y="560" font-size="11" fill="#6b6b66">Sentences per band (20–29 / 30–39 / 40–49 / 50–59 / 60+): Wikipedia 746 / 382 / 207 / 109 / 141, FineWeb-2 685 / 338 / 185 / 77 / 92. A place to correct is a run of characters that differs from the correct text.</text>
 </svg>

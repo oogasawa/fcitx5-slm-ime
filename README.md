@@ -63,7 +63,8 @@ fcitx5 -> application: the preedit, the candidate window and the committed text
 
 Compared with Mozc and Anthy, the open-source Japanese IMEs most widely used on Linux, it converts long readings
 with fewer errors, and the difference grows with the length of the reading: of readings of 60 characters or more, it
-converts 44 % without an error, Mozc 23 % and Anthy 4 %.
+converts 50 % without an error of the Japanese Wikipedia (Mozc 23 %, Anthy 4 %) and 50 % of FineWeb-2
+(Mozc 30 %, Anthy 7 %).
 
 We compared the conversion with Mozc and Anthy on sentences of the Japanese Wikipedia and of FineWeb-2 (text of web
 pages) that were not used for training and whose readings passed the check of "Clean the readings". Every example is a
