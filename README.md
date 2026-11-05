@@ -1,7 +1,40 @@
 # fcitx5-slm-ime
 
-> This is the `1.x` branch, kept for fixes of version 1 (a conversion server in Java). The current version is on
-> `main`: version 2, in which the conversion runs inside the engine, with no server.
+> This is the `3.x` branch: version 3, the conversion server in Java of version 1 with the additions below. Version 4
+> (`4.x`) has the same additions in the engine of version 2, in C++. The released version is version 2, on `main`.
+
+## What versions 3 and 4 add to versions 1 and 2
+
+The model is the small model of version 2, trained further on the same training rows to read hints written in front
+of the reading. It is given two kinds of hints.
+
+- **Words of a dictionary** (`reading=word`): the words of a table of hard words whose readings the typed reading
+  holds, at most four, the longest readings first. The table shipped holds about 114,000 words, the rare words of
+  JMdict and the medical terms of the Manbyo dictionary. The model copies these words; a word with a character the
+  model cannot write is put in by rule after the conversion. A field gets its own words by a table of its own, with
+  no new training. Of the medical words that the training text never holds, the model of version 2 writes 47.7 %
+  correctly, and the model of versions 3 and 4 with the table 67.0 % (the case and radiology reports of the
+  Real-MedNLP Test Collection).
+- **The user's earlier choices** (`reading~text`): a bunsetsu the user changes is learned joined to the bunsetsu
+  before it (or after it, for the first), so that a choice keeps the text it was made in (お金が要る, not 部屋に居る,
+  for いる). The choices whose readings the typed reading holds are given to the model after the words of the
+  dictionary. The model was trained with right choices and with wrong ones (another word of the same reading), and
+  takes a choice only where the text around it fits. Versions 1 and 2 put a choice into the answer wherever its
+  reading is. Given a right choice the model writes it 95.1 % of the time; given a wrong one, 3.7 %.
+
+The choices are given as hints with `-Dhistory.mode=hints`; by default they are put into the answer as
+in versions 1 and 2.
+
+On the test rows the character error rate is 3.34 % (version 2: 3.59 %), and on AJIMEE-Bench 64.0 % of the items are
+converted exactly (version 2: 61.0 %).
+
+Version 3 also offers **predictions**: after five kana or more, the rest of a sentence written before whose reading
+begins with them (おせわに: お世話になっております。), in a list marked » in italics; Tab commits the one chosen,
+and then the text that came after it is offered, so that a sentence written often is typed with a few kana and Tab
+after Tab. The texts are those the user commits and those other programs put in the inbox
+`$XDG_DATA_HOME/slm-ime/learn` (files of `{"text": ..., "time": ...}` lines); they are kept in
+`$XDG_DATA_HOME/slm-ime/predictions.tsv`, at most 200,000. Sudachi with SudachiDict gives their readings; the
+predictions are on when `-Dpredict.dict` names its `system.dic`.
 
 A Japanese kana-to-kanji input method editor (IME) powered by a small language model (SLM): a character-level
 Transformer (encoder-decoder) of about 60 million parameters that converts hiragana into kanji-kana text. The model
