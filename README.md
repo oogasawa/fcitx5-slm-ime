@@ -1,5 +1,34 @@
 # fcitx5-slm-ime
 
+> This is the `4.x` branch: version 4, the engine of version 2 (the conversion inside the engine, in C++) with the
+> additions below. Version 3 (`3.x`) has the same additions in the conversion server of version 1, in Java. The
+> released version is version 2, on `main`.
+
+## What versions 3 and 4 add to versions 1 and 2
+
+The model is the small model of version 2, trained further on the same training rows to read hints written in front
+of the reading. It is given two kinds of hints.
+
+- **Words of a dictionary** (`reading=word`): the words of a table of hard words whose readings the typed reading
+  holds, at most four, the longest readings first. The table shipped holds about 114,000 words, the rare words of
+  JMdict and the medical terms of the Manbyo dictionary. The model copies these words; a word with a character the
+  model cannot write is put in by rule after the conversion. A field gets its own words by a table of its own, with
+  no new training. Of the medical words that the training text never holds, the model of version 2 writes 47.7 %
+  correctly, and the model of versions 3 and 4 with the table 67.0 % (the case and radiology reports of the
+  Real-MedNLP Test Collection).
+- **The user's earlier choices** (`reading~text`): a bunsetsu the user changes is learned joined to the bunsetsu
+  before it (or after it, for the first), so that a choice keeps the text it was made in (お金が要る, not 部屋に居る,
+  for いる). The choices whose readings the typed reading holds are given to the model after the words of the
+  dictionary. The model was trained with right choices and with wrong ones (another word of the same reading), and
+  takes a choice only where the text around it fits. Versions 1 and 2 put a choice into the answer wherever its
+  reading is. Given a right choice the model writes it 95.1 % of the time; given a wrong one, 3.7 %.
+
+The environment variable `SLM_IME_HISTORY` chooses how the choices are used: `hints` gives them to the model,
+`substitute` puts them into the answer as in versions 1 and 2, and `both` (the default) does both.
+
+On the test rows the character error rate is 3.34 % (version 2: 3.59 %), and on AJIMEE-Bench 64.0 % of the items are
+converted exactly (version 2: 61.0 %).
+
 A Japanese kana-to-kanji input method editor (IME) powered by a small language model (SLM): a character-level
 Transformer (encoder-decoder) of about 60 million parameters that converts hiragana into kanji-kana text. The model
 is small enough to run on the CPU of an ordinary laptop or mini PC alone; no GPU is needed. It runs on Linux, on top
