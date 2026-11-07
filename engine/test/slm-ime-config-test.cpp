@@ -43,6 +43,17 @@ int main() {
     loaded.load(raw);
     check("the keys come back after a save and a load", configHasKeysOf(loaded, KeyProfile::ATOK));
 
+    // The history of the user's choices: used and learned from by default, and the option kept through a save.
+    check("a new configuration uses and learns from the choices of the user", *config.history);
+    config.history.setValue(false);
+    fcitx::RawConfig rawOff;
+    config.save(rawOff);
+    check("the history option is saved under its name", rawOff.get("UserHistory") != nullptr);
+    SlmImeConfig loadedOff;
+    loadedOff.load(rawOff);
+    check("the history stays off after a save and a load", !*loadedOff.history);
+    check("and the keys are still those of ATOK", configHasKeysOf(loadedOff, KeyProfile::ATOK));
+
     if (failures == 0) {
         std::printf("slm-ime-config-test: all passed\n");
     }

@@ -78,6 +78,7 @@ nlohmann::json LocalConversion::post(const std::string &path, const nlohmann::js
     } catch (const std::exception &e) {
         throw std::runtime_error(std::string("no model: ") + e.what());
     }
+    converter->setHistoryUsed(historyUsed_);
     return converter->post(path, body);
 }
 

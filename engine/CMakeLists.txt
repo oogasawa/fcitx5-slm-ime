@@ -143,6 +143,13 @@ target_link_libraries(model-check PRIVATE slm-ime-model)
 add_test(NAME model-check COMMAND model-check)
 set_tests_properties(model-check PROPERTIES SKIP_RETURN_CODE 77)
 
+# The history of the user's choices turned off and on again, with the real model (skipped without SLM_IME_MODEL_DIR)
+add_executable(history-check test/history-check.cpp)
+target_include_directories(history-check PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(history-check PRIVATE slm-ime-conversion)
+add_test(NAME history-check COMMAND history-check)
+set_tests_properties(history-check PROPERTIES SKIP_RETURN_CODE 77)
+
 # Answers requests with the C++ conversion, to compare them with those of the server of version 1
 add_executable(conversion-dump test/conversion-dump.cpp)
 target_link_libraries(conversion-dump PRIVATE slm-ime-conversion)

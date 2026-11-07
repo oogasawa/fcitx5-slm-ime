@@ -187,6 +187,7 @@ public:
             takeKeysOf(*config_.profile);
         }
         applyKeys();
+        applyHistory();
     }
     const Configuration *getConfig() const override { return &config_; }
     // Saved from the configuration tool: a profile just chosen puts its keys into the list; keys changed by hand
@@ -204,8 +205,11 @@ public:
         }
         safeSaveAsIni(config_, kConfigFile);
         applyKeys();
+        applyHistory();
     }
     void takeKeysOf(KeyProfile profile) { configTakeKeysOf(config_, profile); }
+    // Whether the conversion uses the choices of the user and learns new ones: the option of the configuration.
+    void applyHistory() { conversion_.setHistoryUsed(*config_.history); }
 
     // The model never runs on this thread, which handles the keys of every application: a key that needs an answer
     // of the model waits for it, and the keys typed meanwhile wait behind it (see handleOrWait).
@@ -1210,7 +1214,7 @@ private:
     void sendRecord(InputContext *ic, LlmImeState *state) {
         LlmImeState::PendingRecord pending = std::move(state->pendingRecord_);
         state->pendingRecord_ = {};
-        if (!pending.valid || isPrivate(ic)) {
+        if (!pending.valid || isPrivate(ic) || !*config_.history) {
             return;
         }
         try {

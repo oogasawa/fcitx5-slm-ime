@@ -141,3 +141,6 @@ msgstr "変換中"
 
 msgid "In both"
 msgstr "どちらでも"
+
+msgid "Use my earlier choices and learn from new ones (off: stop learning)"
+msgstr "これまでの選択を使い、新しい選択からも学習する（オフ: 学習をやめる）"

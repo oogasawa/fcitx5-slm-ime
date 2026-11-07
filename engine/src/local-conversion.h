@@ -7,6 +7,7 @@
 // dictionary candidates; without Anthy there are none.
 #include <nlohmann/json.hpp>
 
+#include <atomic>
 #include <future>
 #include <memory>
 #include <string>
@@ -29,8 +30,13 @@ public:
     // /api/predict: no predictions.
     nlohmann::json get(const std::string &pathWithQuery);
 
+    // Whether the choices of the user are used and added to (Converter::setHistoryUsed). May be called at any time,
+    // also before the model is read; it takes effect with the next post().
+    void setHistoryUsed(bool used) { historyUsed_ = used; }
+
 private:
     std::shared_future<std::shared_ptr<llmime::conversion::Converter>> converter_;
+    std::atomic<bool> historyUsed_{true};
 };
 
 } // namespace llm_ime
