@@ -60,6 +60,8 @@ public final class ImeApi {
     private final Scorer scorer;
     /** How much the order of the source of the other candidates counts against the scores of the model. */
     private final double sourceWeight;
+    /** How the history is used and added to. */
+    private final HistoryMode historyMode;
 
     /**
      * @param converter the model
@@ -94,6 +96,16 @@ public final class ImeApi {
 
     public ImeApi(Converter converter, CandidateSource alternatives, ActorRef<UserHistory> history, Scorer scorer,
                   double sourceWeight) {
+        this(converter, alternatives, history, scorer, sourceWeight, HistoryMode.fromProperty());
+    }
+
+    /**
+     * @param historyMode how the history is used and added to ({@code -Dhistory.mode} when the other constructors
+     *                    are used)
+     */
+    public ImeApi(Converter converter, CandidateSource alternatives, ActorRef<UserHistory> history, Scorer scorer,
+                  double sourceWeight, HistoryMode historyMode) {
+        this.historyMode = historyMode;
         this.converter = converter;
         this.alternatives = alternatives;
         this.history = history;
@@ -156,9 +168,12 @@ public final class ImeApi {
      * does not learn from it. {@code turnedDown} is the text offered for the reading (absent when not known): an
      * earlier choice that was put into it and that the user took out is forgotten, so that one correction undoes a
      * choice made by mistake, however often it was made. Anything else in the body, or a body that cannot be read,
-     * changes nothing.
+     * changes nothing. With {@link HistoryMode#OFF} nothing is kept.
      */
     public String record(String body) {
+        if (!historyMode.used()) {
+            return "{}";
+        }
         try {
             JsonObject request = JsonParser.parseString(body).getAsJsonObject();
             if (request.has("corrections") && request.get("corrections").isJsonArray()) {
@@ -182,15 +197,6 @@ public final class ImeApi {
     }
 
     /**
-     * How the user's earlier choices are used ({@code -Dhistory.mode}): {@code substitute} puts them into the answer of
-     * the model wherever their reading is (HistorySubstitution); {@code hints} gives them to the model as hints
-     * {@code reading~text}, for a model trained to judge them by the text around them (prep/add_hints.py
-     * --history-table); {@code both} does both.
-     */
-    private static final String HISTORY_MODE = System.getProperty("history.mode", "substitute");
-    private static final boolean HISTORY_HINTS = !HISTORY_MODE.equals("substitute");
-    private static final boolean HISTORY_SUBSTITUTION = !HISTORY_MODE.equals("hints");
-    /**
      * Readings of earlier choices shorter than this are not given as hints ({@code -Dhistory.shortestHint}): the
      * model learned to judge choices of two bunsetsu (かんじをかく~漢字を書く), which carry the text they were chosen
      * in, and copies a short one of one bunsetsu, as the engine learned them before, wherever its reading is
@@ -201,7 +207,7 @@ public final class ImeApi {
 
     /** The model's answer for the reading, cut into bunsetsu, with the user's earlier choices used as the mode says. */
     private HistorySubstitution.Result converted(String input, String context) throws Exception {
-        List<DictionaryHints.Hint> choices = HISTORY_HINTS ? choicesIn(input) : List.of();
+        List<DictionaryHints.Hint> choices = historyMode.hints() ? choicesIn(input) : List.of();
         return withHistory(input, covered(input, converter.convert(input, context, choices)));
     }
 
@@ -216,7 +222,7 @@ public final class ImeApi {
     /** The model's answer cut into bunsetsu, with the user's earlier choices put in when the mode says so. */
     private HistorySubstitution.Result withHistory(String input, String modelOutput) {
         List<String> segments = segmentsOf(input, modelOutput);
-        if (!HISTORY_SUBSTITUTION) {
+        if (!historyMode.substitution()) {
             return HistorySubstitution.apply(input, segments, NO_HISTORY);
         }
         return Actors.ask(history, h -> HistorySubstitution.apply(input, segments, h));
@@ -258,7 +264,9 @@ public final class ImeApi {
     private List<String> withAlternatives(String own, String original, String reading, String context, int wanted)
             throws Exception {
         Set<String> first = new LinkedHashSet<>();
-        Actors.ask(history, h -> h.preferred(reading)).ifPresent(first::add);
+        if (historyMode.used()) {
+            Actors.ask(history, h -> h.preferred(reading)).ifPresent(first::add);
+        }
         first.add(own);
         first.add(original);
         List<String> others = new ArrayList<>();
