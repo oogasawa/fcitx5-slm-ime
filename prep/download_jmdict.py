@@ -9,11 +9,12 @@ JMdict format (XML):
     ...
   </entry>
 
-Output: data/jmdict_pairs.tsv
+Output: data/jmdict_pairs.tsv, or the file given with --out
   Format: <hiragana>\t<kanji>
   Example: にほんご\t日本語
 """
 
+import argparse
 import gzip
 import os
 import re
@@ -108,7 +109,9 @@ def extract_jmnedict_pairs(xml_bytes: bytes) -> list[tuple[str, str]]:
 
 
 def main():
-    out_path = os.path.join(OUTPUT_DIR, "jmdict_pairs.tsv")
+    parser = argparse.ArgumentParser(description="Make reading TAB word pairs from JMdict and JMnedict")
+    parser.add_argument("--out", default=os.path.join(OUTPUT_DIR, "jmdict_pairs.tsv"), help="the file to write")
+    out_path = parser.parse_args().out
 
     if os.path.exists(out_path):
         print(f"{out_path} already exists, skipping download.")

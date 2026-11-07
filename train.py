@@ -216,7 +216,8 @@ def train(args: argparse.Namespace) -> None:
                     logits = model(src, tgt_in)
                 loss = criterion(logits.float().reshape(-1, tokenizer.vocab_size), tgt_out.reshape(-1))
                 val_loss += loss.item()
-        val_loss /= len(valid_loader)
+        # A small trial (prep/train_from_scratch.sh with SMOKE=1) may have no validation rows: no loss then, and no best.pt
+        val_loss = val_loss / len(valid_loader) if len(valid_loader) > 0 else float("nan")
 
         elapsed = time.time() - t0
         print(f"Epoch {epoch}/{args.epochs}  "
@@ -224,7 +225,7 @@ def train(args: argparse.Namespace) -> None:
               f"time={elapsed:.0f}s")
 
         # Save checkpoint
-        is_best = val_loss < best_valid_loss
+        is_best = val_loss < best_valid_loss  # False for nan
         if is_best:
             best_valid_loss = val_loss
         ckpt = {

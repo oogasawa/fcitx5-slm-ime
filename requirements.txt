@@ -1,2 +1,9 @@
 # Training, export and evaluation
 torch>=2.1.0
+numpy
+# FineWeb-2, read from Hugging Face (fineweb/make_chunks.py)
+huggingface_hub
+pyarrow
+# The check of the readings (prep/clean_readings.py)
+sudachipy
+sudachidict_full

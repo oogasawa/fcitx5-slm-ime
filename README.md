@@ -202,6 +202,22 @@ the phrasal unit (bunsetsu) boundaries of its sentences, and the small model is 
 sentence from the reading and the text before the cursor. Training has six parts. Each part reads the files that the part
 before it wrote.
 
+`prep/train_from_scratch.sh` runs all of them, from the download of the corpora to the exported model, with the
+programs, versions and options that made the model of the releases:
+
+```bash
+pip install -r requirements.txt     # and a JDK 25 with Maven, git and curl
+LLM_URL=http://localhost:8000/v1/chat/completions WORK=/data/slm-ime prep/train_from_scratch.sh
+```
+
+`LLM_URL` is the chat completions URL of an OpenAI-compatible server (vLLM, for example) that serves Gemma 4
+(`google/gemma-4-26B-A4B-it`, Apache License 2.0); making the pairs is the only part that needs GPUs. The script can be
+run again after a failure: a part whose output is there is skipped, and the parts can be named on the command line
+(`prep/train_from_scratch.sh clean dataset`). `SMOKE=1` runs every part on a few chunks and trains a tiny model, to
+check the whole way in about an hour. The result is a model of the same kind and quality, not the released weights bit
+for bit: the training does not fix its random seed, the answers of the language model depend on the server, and the
+seed of the second FineWeb-2 sample of the releases was not recorded. The sections below describe the parts.
+
 ### Make the pairs from Wikipedia
 
 A pair is a sentence as a reading and as kanji-kana text, both cut into phrasal units (bunsetsu) by `|`, and the
@@ -211,29 +227,38 @@ n-th unit of the reading answers the n-th unit of the kanji-kana text.
 # 1. the prose paragraphs of the articles of the dump: one line "title TAB paragraph"
 java -cp commons-compress.jar:commons-io.jar -Djdk.xml.maxGeneralEntitySizeLimit=0 -Djdk.xml.totalEntitySizeLimit=0 \
      wikipedia/WikiTextExtractor.java jawiki-latest-pages-articles.xml.bz2 > jawiki_text.tsv
-# 2. chunk files wiki_<n>.tsv of 30 paragraphs each, the unit of the work in step 3
-java wikipedia/WikiToChunks.java jawiki_text.tsv CHUNK_DIR
-# 3. one worker takes chunks from a list (ORDER_FILE has one chunk path per line), has the language model write
-#    the pairs, and leaves CHUNK_pairs.tsv; many workers can share one list (wikipedia/image/ is their image)
-wikipedia/image/worker.sh BROKER_CHAT_URL TAG MODEL ORDER_FILE
+# 2. chunk files wiki_<n>.tsv of 200 paragraphs each, the unit of the work in step 3
+java wikipedia/WikiToChunks.java jawiki_text.tsv CHUNK_DIR 0 200
+#    the same kind of chunks fw_<n>.tsv from FineWeb-2 (Japanese), read from Hugging Face; the releases used two
+#    samples, the second with --first-chunk 10000 --exclude FIRST_DIR
+python3 fineweb/make_chunks.py FINEWEB_DIR
+# 3. the language model writes the pairs of the chunks in a list (ORDER_FILE has one chunk path per line),
+#    WORKERS chunks at a time, and leaves CHUNK_pairs.tsv in PAIRS_DIR
+(cd pairs && mvn package)
+java -jar pairs/target/slm-ime-pairs.jar LLM_URL google/gemma-4-26B-A4B-it WORKERS ORDER_FILE PAIRS_DIR
 ```
 
 Step 1 skips redirects and pages that are not articles, and removes the wiki markup with simple rules, which is
-good enough for training text. In step 3 the workers run the workflow `wikipedia/image/kana-kanji-pairs.yaml` of
-Turing workflow against an LLM server that is reached through the GPU broker of this project, so this step needs
-such a server. `wikipedia/ReadingCheck.java` compares the readings of the pairs with two dictionaries and lists the
+good enough for training text. The releases used the Wikipedia chunks whose number ends in 0 or 5 and every FineWeb-2
+chunk. Step 3 needs an OpenAI-compatible LLM server; `LLM_URL` is its chat completions URL. For every page of a chunk, the
+model first cuts the sentences into phrasal units (bunsetsu), then writes the reading of every unit. The program
+(`pairs/`, on POJO-actor) holds the classes and the prompts of plugin-kana-kanji of Turing-workflow-plugins at the
+commit that made the pairs of the releases; the releases ran the same steps as the Turing workflow
+`wikipedia/image/kana-kanji-pairs.yaml` in the image of `wikipedia/image/`. `wikipedia/ReadingCheck.java` compares the readings of the pairs with two dictionaries and lists the
 units that differ; it changes nothing.
 
 ### Clean the readings
 
 ```bash
+curl -O http://www.edrdg.org/kanjidic/kanjidic2.xml.gz
+python3 prep/download_jmdict.py --out jmdict_pairs.tsv
 python3 prep/clean_readings.py PAIRS_DIR CLEAN_DIR --kanjidic kanjidic2.xml.gz --jmdict jmdict_pairs.tsv \
         --checker ANTHY_DICTS/tools --workers 12
 ```
 
 The language model gets some readings wrong (相互作用 read そうごさくよう, 来日 read らいにゅう). The script checks
 every phrasal unit (bunsetsu) of the pairs with `bunsetsu_check.py` of Anthy-dicts
-(<https://github.com/oogasawa/Anthy-dicts>): the reading must be made of the readings of its kanji in KANJIDIC2 or of
+(<https://github.com/oogasawa/Anthy-dicts>, commit 082d7b5): the reading must be made of the readings of its kanji in KANJIDIC2 or of
 its words in JMdict and JMnedict (`jmdict_pairs.tsv` has one `reading TAB word` per line). A reading that fails is
 replaced by the reading of Sudachi (`sudachipy` with `sudachidict_full`) for the same stretch of the sentence, if that
 one passes; a sentence that neither explains is marked `skip` and is used only as the text before the cursor of the
@@ -246,7 +271,7 @@ failed, 94 % of them were replaced, and 2.9 % and 1.4 % of the sentences were ma
 python3 prep/build_dataset_g.py CLEAN_DIR DATA_DIR --context-chars 100 --partial-end-percent 20 --hiragana-source
 ```
 
-`CLEAN_DIR` holds the `*_pairs.tsv` files. `--hiragana-source` writes the katakana of the readings in hiragana, as the
+`CLEAN_DIR` holds the `*_pairs.tsv` files of both sources. `--hiragana-source` writes the katakana of the readings in hiragana, as the
 user types them (the language model wrote most readings of katakana words in katakana). The script cuts each sentence the way a user types it, from left to
 right: a row is the reading of a few phrasal units (bunsetsu) from a random place in a sentence, put after the last
 100 characters of the text before it and the separator `SEP`, and the answer is the kanji-kana text of that reading
@@ -274,11 +299,12 @@ runs in bfloat16 by default (`--amp bf16`). On an RTX 4080, one epoch of 5.4 mil
 ### Export the model
 
 ```bash
-python3 export_weights.py checkpoints/NAME/best.pt MODEL_DIR/slm-ime-weights.bin 100
+python3 export_weights.py checkpoints/NAME/epoch_08.pt MODEL_DIR/slm-ime-weights.bin 100
 cp DATA_DIR/tokenizer.json MODEL_DIR/
 ```
 
-The engine computes the model in C++ and does not read a PyTorch checkpoint, so the script writes the weights in a
+The releases are the weights after the last epoch. The engine computes the model in C++ and does not read a PyTorch
+checkpoint, so the script writes the weights in a
 simple file of its own: a JSON header with the size of the model and the place of every tensor, then the tensors as
 float32. `engine/test/model-check.cpp` compares the C++ computation with PyTorch on cases that
 `eval/make_cpp_golden.py` writes from the same checkpoint. `MODEL_DIR` is the model directory of "Install from
