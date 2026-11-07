@@ -86,11 +86,10 @@ public class ChunkMaker {
 
     // The workflow's states, in order. False where the workflow ends at its catch-all transition.
     private boolean pairs(Path chunk, Path part) {
-        VllmClient llm = new VllmClient();
+        VllmClient llm = new VllmClient(url, model);
         OcrPages pages = new OcrPages();
         PairWriter writer = new PairWriter();
-        if (!llm.setUrl(url).isSuccess() || !llm.setModel(model).isSuccess()
-                || !pages.loadFile(chunk.toString()).isSuccess() || !writer.openOutput(part.toString()).isSuccess()) {
+        if (!pages.loadFile(chunk.toString()).isSuccess() || !writer.openOutput(part.toString()).isSuccess()) {
             writer.closeOutput();
             return false;
         }

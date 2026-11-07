@@ -38,6 +38,10 @@ public final class MakePairs {
         }
         String url = args[0];
         String model = args[1];
+        if (url.isBlank() || model.isBlank()) {
+            System.err.println("MakePairs: URL and MODEL must not be empty");
+            System.exit(2);
+        }
         int workers = Integer.parseInt(args[2]);
         List<Path> chunks = Files.readAllLines(Path.of(args[3])).stream()
                 .filter(line -> !line.isBlank()).map(Path::of).toList();

@@ -1,7 +1,8 @@
 // Copied from plugin-kana-kanji of Turing-workflow-plugins (https://github.com/scivicslab/Turing-workflow-plugins),
 // commit 5fabd30, the version that made the training pairs of the releases (Apache License 2.0, the same author).
-// Only the package, ActionResult (now in this package) and the headers for a GPU broker (sent only when the system
-// property pairs.background is true) were changed.
+// Only the package, ActionResult (now in this package), the headers for a GPU broker (sent only when the system
+// property pairs.background is true) and the URL and the model (arguments of the constructor, with no default
+// address or model) were changed.
 package com.github.oogasawa.slmime.pairs;
 
 import java.net.URI;
@@ -28,8 +29,6 @@ import java.util.logging.Logger;
  *
  * <p>Supported actions:</p>
  * <ul>
- *   <li>{@code setUrl} - Set the vLLM endpoint URL</li>
- *   <li>{@code setModel} - Set the model name</li>
  *   <li>{@code segment} - Step 1: segment OCR text into bunsetsu</li>
  *   <li>{@code toHiragana} - Step 2: convert segmented text to hiragana</li>
  * </ul>
@@ -91,24 +90,25 @@ public class VllmClient {
             入力テキスト:
             %s""";
 
-    private String vllmUrl = "http://192.168.5.16:8000/v1/chat/completions";
-    private String model = "Qwen3.5-35B-A3B";
+    private final String vllmUrl;
+    private final String model;
     private String lastResponse = "";
 
-    public ActionResult setUrl(String url) {
+    /**
+     * @param url the chat completions URL of an OpenAI-compatible server
+     * @param model the model that server serves; neither has a default, because a server address is the business of
+     *              whoever runs the program
+     * @throws IllegalArgumentException when one of them is missing
+     */
+    public VllmClient(String url, String model) {
         if (url == null || url.isBlank()) {
-            return new ActionResult(false, "URL is required");
+            throw new IllegalArgumentException("URL is required");
+        }
+        if (model == null || model.isBlank()) {
+            throw new IllegalArgumentException("Model name is required");
         }
         this.vllmUrl = url;
-        return new ActionResult(true, "URL set to " + this.vllmUrl);
-    }
-
-    public ActionResult setModel(String modelName) {
-        if (modelName == null || modelName.isBlank()) {
-            return new ActionResult(false, "Model name is required");
-        }
-        this.model = modelName;
-        return new ActionResult(true, "Model set to " + this.model);
+        this.model = model;
     }
 
     /**
