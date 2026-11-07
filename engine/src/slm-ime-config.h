@@ -75,6 +75,10 @@ FCITX_SPECIALIZE_TYPENAME(SlmImeKeyGroup<2>, "SlmImeKeyGroup2")
 
 FCITX_CONFIGURATION(
     SlmImeConfig,
+    // Off: the choices of the user are neither used nor added to. What is already kept is left alone, and is used
+    // again when this is turned back on.
+    fcitx::Option<bool> history{
+        this, "UserHistory", _("Use my earlier choices and learn from new ones (off: stop learning)"), true};
     fcitx::OptionWithAnnotation<KeyProfile, KeyProfileI18NAnnotation> profile{
         this, "KeyProfile", _("Key binding profile (press OK to put its keys into the lists below)"),
         KeyProfile::Default};

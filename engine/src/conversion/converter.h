@@ -12,6 +12,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
@@ -31,6 +32,7 @@ struct ConverterSettings {
     bool historySubstitution = true;
     size_t mostScored = 20;      // how many dictionary candidates of a bunsetsu the model puts in order
     double sourceWeight = 0;     // how much the order of the dictionary counts against the scores of the model
+    bool historyUsed = true;     // false: the choices of the user are neither used nor added to (setHistoryUsed)
 };
 
 class Converter {
@@ -58,6 +60,12 @@ public:
     // is forgotten: one correction undoes a choice made by mistake, however often it was made.
     void record(const std::u32string &reading, const std::u32string &chosen, const std::u32string &turnedDown = U"");
 
+    // Whether the choices of the user are used and added to. Off: they are not put into the answer or first in the
+    // candidates of a reading, and record() keeps nothing; the history file is left alone, and what is in it is used
+    // again when this is turned back on. May be called from any thread, at any time.
+    void setHistoryUsed(bool used) { historyUsed_ = used; }
+    bool historyUsed() const { return historyUsed_; }
+
     // The requests of the engine as the conversion server of version 1 took them: /api/segment-convert,
     // /api/segment-candidates, /api/convert, /api/record, /api/continue, /api/predict.
     nlohmann::json post(const std::string &path, const nlohmann::json &request);
@@ -80,12 +88,19 @@ private:
                                                  const std::u32string &reading,
                                                  const model::Transformer::Memory *memory, size_t wanted);
 
+    // The history the answer is put through: the user's, or an empty one when the history is off
+    // (and the user's choices are put into it only when settings_.historySubstitution is on, as in version 2)
+    const UserHistory &historyInUse() const {
+        return historyUsed_ && settings_.historySubstitution ? history_ : noHistory_;
+    }
+
     ConverterSettings settings_;
     Tokenizer tokenizer_;
     model::Transformer model_;
     UserHistory history_;
     UserHistory noHistory_;  // put into the answers instead of history_ when settings_.historySubstitution is off
     DictionaryHints hints_;
+    std::atomic<bool> historyUsed_;
     std::unique_ptr<CandidateSource> source_;
     int barId_;
 };

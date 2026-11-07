@@ -115,6 +115,7 @@ Converter::Converter(const ConverterSettings &settings, std::unique_ptr<Candidat
       model_(settings.weightsPath),
       history_(settings.historyPath.empty() ? UserHistory() : UserHistory(settings.historyPath)),
       hints_(settings.hintsPath.empty() ? DictionaryHints() : DictionaryHints(settings.hintsPath)),
+      historyUsed_(settings.historyUsed),
       source_(std::move(source)),
       barId_(tokenizer_.idOf(U'|')) {}
 
@@ -128,7 +129,7 @@ std::vector<int> Converter::sourceIds(const std::u32string &input, const std::u3
     // The user's choices go to the model after the words of the dictionary, and not to substituteHints: the model is
     // to judge them by the text before the cursor, not to have them put in
     std::vector<Hint> all = found;
-    if (settings_.historyHints) {
+    if (historyUsed_ && settings_.historyHints) {
         for (const auto &m : history_.matchesIn(input, kShortestHistoryReading)) {
             bool seen = std::any_of(all.begin(), all.end(), [&](const Hint &h) { return h.word == m.chosen; });
             if (!seen) {
@@ -219,8 +220,10 @@ std::vector<std::u32string> Converter::withAlternatives(const std::u32string &ow
             first.push_back(t);
         }
     };
-    if (auto preferred = history_.preferred(reading)) {
-        addFirst(*preferred);
+    if (historyUsed_) {
+        if (auto preferred = history_.preferred(reading)) {
+            addFirst(*preferred);
+        }
     }
     addFirst(own);
     addFirst(original);
@@ -261,7 +264,7 @@ std::vector<std::u32string> Converter::withAlternatives(const std::u32string &ow
 
 std::vector<Converter::Segment> Converter::segmentConvert(const std::u32string &input, const std::u32string &context,
                                                           size_t wanted) {
-    Substituted answer = substituteHistory(input, modelSegments(input, translate(input, context)), settings_.historySubstitution ? history_ : noHistory_);
+    Substituted answer = substituteHistory(input, modelSegments(input, translate(input, context)), historyInUse());
     std::vector<Segment> segments;
     for (size_t i = 0; i < answer.texts.size(); i++) {
         segments.push_back({answer.readings[i], withAlternatives(answer.texts[i], answer.originals[i],
@@ -281,7 +284,7 @@ std::vector<std::u32string> Converter::segmentCandidates(const std::u32string &i
     } else {
         translated = translate(input, context);
     }
-    Substituted answer = substituteHistory(input, modelSegments(input, translated), settings_.historySubstitution ? history_ : noHistory_);
+    Substituted answer = substituteHistory(input, modelSegments(input, translated), historyInUse());
     std::u32string own = joined(answer.texts);
     if (output != nullptr) {
         *output = own;
@@ -290,11 +293,14 @@ std::vector<std::u32string> Converter::segmentCandidates(const std::u32string &i
 }
 
 std::u32string Converter::convert(const std::u32string &input, const std::u32string &context) {
-    return joined(substituteHistory(input, modelSegments(input, translate(input, context)), settings_.historySubstitution ? history_ : noHistory_).texts);
+    return joined(substituteHistory(input, modelSegments(input, translate(input, context)), historyInUse()).texts);
 }
 
 void Converter::record(const std::u32string &reading, const std::u32string &chosen,
                        const std::u32string &turnedDown) {
+    if (!historyUsed_) {
+        return;
+    }
     if (!turnedDown.empty()) {
         auto preferred = history_.preferred(reading);
         if (preferred && *preferred == turnedDown) {
