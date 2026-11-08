@@ -51,7 +51,7 @@ public class KanjiServer {
     public KanjiServer(String modelDir, String tokenizerPath) throws Exception {
         model = system.actorOf("model", new KanjiModel(modelDir, tokenizerPath));
         history = system.actorOf("history", openHistory());
-        anthy = system.actorOf("anthy", AnthyCandidates.loadOrNone());
+        anthy = system.actorOf("anthy", AnthyCandidates.loadOrNone(DictionaryLevel.fromProperty()));
         ime = new ImeApi(new ImeApi.Converter() {
                     @Override
                     public String convert(String kana, String context) {

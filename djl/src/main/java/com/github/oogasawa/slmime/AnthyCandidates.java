@@ -7,6 +7,9 @@ import java.lang.foreign.MemorySegment;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -36,8 +39,18 @@ public final class AnthyCandidates implements CandidateSource {
     private final MethodHandle resizeSegment;
     private final MemorySegment context;
 
-    /** @throws UnsupportedOperationException if {@code libanthy} cannot be loaded */
+    /** Anthy with the private dictionary of the user; @throws UnsupportedOperationException if {@code libanthy} cannot be loaded */
     public AnthyCandidates() {
+        this(true);
+    }
+
+    /**
+     * @param privateDictionary whether Anthy reads {@code ~/.anthy/private_words_default}; when it does not, Anthy
+     *     is given an empty directory as its home, so that it has the dictionary it comes with only (and what it
+     *     learns is thrown away with the directory)
+     * @throws UnsupportedOperationException if {@code libanthy} cannot be loaded
+     */
+    public AnthyCandidates(boolean privateDictionary) {
         try {
             Linker linker = Linker.nativeLinker();
             SymbolLookup lib = SymbolLookup.libraryLookup("libanthy.so.1", arena);
@@ -58,6 +71,12 @@ public final class AnthyCandidates implements CandidateSource {
             resizeSegment = handle(linker, lib, "anthy_resize_segment",
                     FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT,
                             ValueLayout.JAVA_INT));
+            if (!privateDictionary) {
+                // Before anthy_init, which reads the dictionaries of the home directory
+                MethodHandle override = handle(linker, lib, "anthy_conf_override",
+                        FunctionDescriptor.ofVoid(ValueLayout.ADDRESS, ValueLayout.ADDRESS));
+                override.invoke(arena.allocateFrom("HOME"), arena.allocateFrom(emptyHome().toString()));
+            }
             if ((int) init.invoke() != 0) {
                 throw new UnsupportedOperationException("anthy_init failed");
             }
@@ -70,10 +89,30 @@ public final class AnthyCandidates implements CandidateSource {
         }
     }
 
-    /** Anthy, or {@link CandidateSource#NONE} with a warning if it cannot be loaded. */
+    /** An empty directory for the home of Anthy, removed when the server ends. */
+    private static Path emptyHome() throws IOException {
+        Path home = Files.createTempDirectory("slm-ime-anthy-home-");
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> deleteTree(home)));
+        return home;
+    }
+
+    private static void deleteTree(Path root) {
+        try (var paths = Files.walk(root)) {
+            paths.sorted(java.util.Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+        } catch (IOException | RuntimeException e) {
+            // a directory left in /tmp is harmless
+        }
+    }
+
+    /** Anthy with its private dictionary, or {@link CandidateSource#NONE} with a warning if it cannot be loaded. */
     public static CandidateSource loadOrNone() {
+        return loadOrNone(DictionaryLevel.EXTENDED);
+    }
+
+    /** Anthy for a dictionary level, or {@link CandidateSource#NONE} with a warning if it cannot be loaded. */
+    public static CandidateSource loadOrNone(DictionaryLevel level) {
         try {
-            return new AnthyCandidates();
+            return new AnthyCandidates(level.privateDictionary());
         } catch (UnsupportedOperationException | LinkageError e) {
             log.warning("Anthy is not available, bunsetsu get the model's candidate only: " + e.getMessage());
             return NONE;

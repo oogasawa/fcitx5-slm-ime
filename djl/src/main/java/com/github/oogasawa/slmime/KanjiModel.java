@@ -99,8 +99,10 @@ public class KanjiModel {
         if (HINTS_DICT != null && !USE_CONTEXT) {
             throw new IllegalArgumentException("-Dhints.dict needs a model trained with context (-Dmodel.context=true)");
         }
-        hints = HINTS_DICT == null ? null : DictionaryHints.load(Paths.get(HINTS_DICT));
-        log.info("Dictionary hints: " + (hints == null ? "off" : HINTS_DICT));
+        DictionaryLevel level = DictionaryLevel.fromProperty();
+        hints = HINTS_DICT == null || !level.hints() ? null : DictionaryHints.load(Paths.get(HINTS_DICT));
+        log.info("Dictionary level: " + level.name().toLowerCase() + "; dictionary hints: "
+            + (hints == null ? "off" : HINTS_DICT));
         log.info("Models ready.");
     }
 
