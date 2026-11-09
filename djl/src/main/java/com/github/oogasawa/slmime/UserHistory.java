@@ -96,6 +96,22 @@ public final class UserHistory {
     }
 
     /**
+     * Forgets {@code chosen} for {@code reading} if the user chose it only once: a choice that a reviewer
+     * ({@link HistoryReview}) suspects to be a slip. A choice made twice or more was meant and stays; one forgotten
+     * here comes back, as any choice, when the user makes it again.
+     *
+     * @return whether it was forgotten
+     */
+    public boolean forgetIfOnce(String reading, String chosen) {
+        LinkedHashMap<String, Integer> candidates = choices.get(reading);
+        if (candidates == null || candidates.getOrDefault(chosen, 0) != 1) {
+            return false;
+        }
+        forget(reading, chosen);
+        return true;
+    }
+
+    /**
      * Each choice is written as many times as it was made, the choices of a reading in the order they were made last,
      * so that reading the file again gives the same counts and the same latest choices. Written to another file
      * first, which then takes the place of the old one, so that a crash never leaves half a history.

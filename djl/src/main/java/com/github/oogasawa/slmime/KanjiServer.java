@@ -40,6 +40,8 @@ public class KanjiServer {
     private final ImeApi ime;
     /** The predictions ({@code /api/predict}), or {@code null} when they are off (see {@link PredictionService}). */
     private final PredictionService predictions;
+    /** Where a reviewer of the history meets the server, or {@code null} when it is off (see {@link HistoryReview}). */
+    private final HistoryReview review;
 
     /** The candidates the user chose: {@code -Dhistory.file=PATH} (default {@code user_history.tsv} in the
      *  working directory); an empty value keeps the history in memory only. */
@@ -69,6 +71,7 @@ public class KanjiServer {
                         : ImeApi.Scorer.NONE,
                 KanjiModel.SOURCE_WEIGHT);
         predictions = PredictionService.fromProperties(system);
+        review = HistoryReview.fromProperties(history);
     }
 
     public void startAndBlock(int port) throws IOException {
@@ -88,6 +91,9 @@ public class KanjiServer {
         server.createContext("/api/record", ex -> answer(ex, body -> {
             if (predictions != null) {
                 predictions.learnCommitted(body);
+            }
+            if (review != null) {
+                review.noteRecord(body);
             }
             return ime.record(body);
         })).getFilters().add(guard);
