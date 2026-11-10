@@ -66,6 +66,26 @@ class HistoryModeTest {
         assertEquals("望", firstCandidate(api, "もう"));
     }
 
+    private static List<String> candidates(ImeApi api, String reading) throws Exception {
+        List<String> found = new ArrayList<>();
+        JsonParser.parseString(api.segmentCandidates("{\"input\":\"" + reading + "\"}")).getAsJsonObject()
+                .getAsJsonArray("candidates").forEach(c -> found.add(c.getAsString()));
+        return found;
+    }
+
+    /** Given as hints, an earlier choice is not put before the model's answer: one chosen by mistake (この~個の)
+     *  would take the first place wherever its reading comes; it comes right after the answer instead. */
+    @Test
+    void withHintsTheModelsAnswerStaysFirst_andTheEarlierChoiceComesNext() throws Exception {
+        UserHistory history = UserHistory.inMemory();
+        history.learn("この", "個の");
+
+        assertEquals(List.of("この", "個の"), candidates(api(history, HistoryMode.HINTS, new ArrayList<>()), "この"));
+        assertEquals(List.of("個の", "この"), candidates(api(history, HistoryMode.SUBSTITUTE, new ArrayList<>()), "この"),
+                "the control: put in, the choice comes first");
+        assertEquals("個の", firstCandidate(api(history, HistoryMode.BOTH, new ArrayList<>()), "この"));
+    }
+
     @Test
     void offLearnsNothingFromWhatTheEngineReports() throws Exception {
         UserHistory history = UserHistory.inMemory();

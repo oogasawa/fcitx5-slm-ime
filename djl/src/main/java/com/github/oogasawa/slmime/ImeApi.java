@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -264,10 +265,14 @@ public final class ImeApi {
     private List<String> withAlternatives(String own, String original, String reading, String context, int wanted)
             throws Exception {
         Set<String> first = new LinkedHashSet<>();
-        if (historyMode.used()) {
-            Actors.ask(history, h -> h.preferred(reading)).ifPresent(first::add);
+        Optional<String> chosen = historyMode.used() ? Actors.ask(history, h -> h.preferred(reading)) : Optional.empty();
+        // Put in where the earlier choices are put into answers; given as hints, the model decides, and the choice
+        // comes right after its answer, one key away
+        if (historyMode.substitution()) {
+            chosen.ifPresent(first::add);
         }
         first.add(own);
+        chosen.ifPresent(first::add);
         first.add(original);
         List<String> others = new ArrayList<>();
         for (String candidate : alternatives.candidates(reading, wanted)) {
