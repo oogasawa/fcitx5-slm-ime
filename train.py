@@ -6,6 +6,14 @@ Usage: python3 train.py --data-dir DATA_DIR --run-name NAME --epochs 8 --batch-s
 
 Checkpoints are saved to checkpoints/<run-name>/: last.pt (to resume), best.pt (lowest validation loss) and
 epoch_NN.pt (the weights after every epoch).
+
+Several GPUs: start the same command under torchrun, for example
+    torchrun --standalone --nproc_per_node=2 train.py --data-dir DATA_DIR --run-name NAME --batch-size 1024 ...
+Each GPU then runs one process (DistributedDataParallel). --batch-size stays the batch of one optimizer step over all
+GPUs (each GPU takes batch-size / GPUs rows), and the learning rate schedule has the same number of steps as on one
+GPU, so a model trained on several GPUs can be compared with one trained on one. Only the first process prints and
+writes the checkpoints; they hold the same weights, under the same names, as those of a run on one GPU.
+Started without torchrun, the script runs on one GPU exactly as before.
 """
 
 import os
@@ -16,8 +24,11 @@ import random
 import argparse
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
+from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.data.distributed import DistributedSampler
 
 sys.path.insert(0, os.path.dirname(__file__))
 from model.tokenizer import CharTokenizer, BOS_ID, EOS_ID, PAD_ID
@@ -92,10 +103,36 @@ def build_tokenizer(train_pairs: list[tuple[str, str]]) -> CharTokenizer:
 # ---------------------------------------------------------------------------
 
 def train(args: argparse.Namespace) -> None:
+    # torchrun sets WORLD_SIZE, RANK and LOCAL_RANK; without it there is one process and nothing is distributed
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    distributed = world_size > 1
+    rank = int(os.environ.get("RANK", "0"))
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    main_process = rank == 0
+    if distributed:
+        if args.batch_size % world_size != 0:
+            raise SystemExit(f"--batch-size {args.batch_size} is not a multiple of the {world_size} GPUs")
+        torch.cuda.set_device(local_rank)
+        dist.init_process_group(backend="nccl")
+        device = torch.device("cuda", local_rank)
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    rank_batch = args.batch_size // world_size
+
+    def log(msg: str) -> None:
+        if main_process:
+            print(msg, flush=True)
+
+    if args.seed is not None:
+        # Each process its own seed, so that dropout differs between them; the initial weights are the first
+        # process's anyway, as DistributedDataParallel copies them to the others
+        random.seed(args.seed + rank)
+        torch.manual_seed(args.seed + rank)
+
     ckpt_dir = os.path.join(_BASE_CKPT_DIR, args.run_name)
-    os.makedirs(ckpt_dir, exist_ok=True)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}")
+    if main_process:
+        os.makedirs(ckpt_dir, exist_ok=True)
+    log(f"Device: {device}" + (f" x {world_size} processes, {rank_batch} rows each per step" if distributed else ""))
     use_amp = args.amp == "bf16" and device.type == "cuda"
     # The cuDNN attention kernel, on by default in PyTorch 2.5.0, makes a bf16 step about 12 times slower than an
     # fp32 step on the RTX 4080 (1804 ms against 144 ms); without it a bf16 step takes 72 ms.
@@ -104,26 +141,29 @@ def train(args: argparse.Namespace) -> None:
     # Load data
     train_pairs = load_tsv(os.path.join(args.data_dir, "train.tsv"))
     valid_pairs = load_tsv(os.path.join(args.data_dir, "valid.tsv"))
-    print(f"Train: {len(train_pairs)}, Valid: {len(valid_pairs)}")
+    log(f"Train: {len(train_pairs)}, Valid: {len(valid_pairs)}")
 
-    # Tokenizer
+    # Tokenizer: built and written by the first process only; the others read the file it wrote
     tok_path = os.path.join(args.data_dir, "tokenizer.json")
-    if os.path.exists(tok_path):
-        print("Loading existing tokenizer...")
-        tokenizer = CharTokenizer.load(tok_path)
-    else:
-        print("Building tokenizer...")
-        tokenizer = build_tokenizer(train_pairs)
-        tokenizer.save(tok_path)
-    print(f"Vocab size: {tokenizer.vocab_size}")
+    if main_process and not os.path.exists(tok_path):
+        log("Building tokenizer...")
+        build_tokenizer(train_pairs).save(tok_path)
+    if distributed:
+        dist.barrier()
+    log("Loading tokenizer...")
+    tokenizer = CharTokenizer.load(tok_path)
+    log(f"Vocab size: {tokenizer.vocab_size}")
 
-    # Datasets
+    # Datasets. On several GPUs each process reads its own share of the rows (DistributedSampler, shuffled anew
+    # every epoch); the number of steps per epoch is then about that of one GPU with the whole batch.
     train_ds = KanaKanjiDataset(train_pairs, tokenizer, max_len=args.max_len)
     valid_ds = KanaKanjiDataset(valid_pairs, tokenizer, max_len=args.max_len)
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True,
-                              collate_fn=collate_fn, num_workers=2, pin_memory=True)
-    valid_loader = DataLoader(valid_ds, batch_size=args.batch_size, shuffle=False,
-                              collate_fn=collate_fn, num_workers=2, pin_memory=True)
+    train_sampler = DistributedSampler(train_ds, shuffle=True, seed=args.seed or 0) if distributed else None
+    valid_sampler = DistributedSampler(valid_ds, shuffle=False) if distributed else None
+    train_loader = DataLoader(train_ds, batch_size=rank_batch, shuffle=train_sampler is None, sampler=train_sampler,
+                              collate_fn=collate_fn, num_workers=args.num_workers, pin_memory=True)
+    valid_loader = DataLoader(valid_ds, batch_size=rank_batch, shuffle=False, sampler=valid_sampler,
+                              collate_fn=collate_fn, num_workers=args.num_workers, pin_memory=True)
 
     # Model
     model = KanaKanjiTransformer(
@@ -137,7 +177,7 @@ def train(args: argparse.Namespace) -> None:
         max_len=args.max_len + 4,
         pad_id=PAD_ID,
     ).to(device)
-    print(f"Model parameters: {model.num_parameters():,}")
+    log(f"Model parameters: {model.num_parameters():,}")
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
@@ -154,7 +194,7 @@ def train(args: argparse.Namespace) -> None:
     # Resume from last checkpoint if available
     last_ckpt_path = os.path.join(ckpt_dir, "last.pt")
     if os.path.exists(last_ckpt_path):
-        print(f"Resuming from {last_ckpt_path} ...")
+        log(f"Resuming from {last_ckpt_path} ...")
         ckpt = torch.load(last_ckpt_path, map_location=device)
         model.load_state_dict(ckpt["model_state"])
         optimizer.load_state_dict(ckpt["optimizer_state"])
@@ -162,11 +202,19 @@ def train(args: argparse.Namespace) -> None:
             scheduler.load_state_dict(ckpt["scheduler_state"])
         best_valid_loss = ckpt.get("best_val_loss", ckpt.get("val_loss", float("inf")))
         start_epoch = ckpt["epoch"] + 1
-        print(f"Resumed: epoch {ckpt['epoch']} done, best_val_loss={best_valid_loss:.4f}, starting from epoch {start_epoch}")
+        log(f"Resumed: epoch {ckpt['epoch']} done, best_val_loss={best_valid_loss:.4f}, starting from epoch {start_epoch}")
+
+    # On several GPUs the model is wrapped: the wrapper averages the gradients of the processes in backward().
+    # Checkpoints keep the weights of the model inside (raw_model), so they have the names of a run on one GPU.
+    raw_model = model
+    if distributed:
+        model = DistributedDataParallel(model, device_ids=[local_rank])
 
     for epoch in range(start_epoch, args.epochs + 1):
         # Train
         model.train()
+        if train_sampler is not None:
+            train_sampler.set_epoch(epoch)
         total_loss = 0.0
         t0 = time.time()
         for step, (src, tgt) in enumerate(train_loader, 1):
@@ -191,20 +239,25 @@ def train(args: argparse.Namespace) -> None:
             if args.max_steps and step >= args.max_steps:
                 torch.cuda.synchronize()
                 took = time.time() - t0
-                print(f"BENCH amp={args.amp} batch={args.batch_size} steps={step} "
-                      f"{1000 * took / step:.1f} ms/step loss={total_loss / step:.4f} "
-                      f"peak_memory={torch.cuda.max_memory_allocated() / 2**30:.1f}GiB")
+                log(f"BENCH amp={args.amp} batch={args.batch_size} gpus={world_size} steps={step} "
+                    f"{1000 * took / step:.1f} ms/step loss={total_loss / step:.4f} "
+                    f"peak_memory={torch.cuda.max_memory_allocated() / 2**30:.1f}GiB")
+                if distributed:
+                    dist.destroy_process_group()
                 sys.exit(0)
             if step % 500 == 0:
+                # On several GPUs: the loss of the first process's rows only, as a sign of progress
                 avg = total_loss / step
                 elapsed = time.time() - t0
-                print(f"  Epoch {epoch} step {step}/{len(train_loader)} "
-                      f"loss={avg:.4f} elapsed={elapsed:.0f}s")
+                log(f"  Epoch {epoch} step {step}/{len(train_loader)} "
+                    f"loss={avg:.4f} elapsed={elapsed:.0f}s")
 
-        train_loss = total_loss / len(train_loader)
+        train_loss = mean_over_processes(total_loss, len(train_loader), device, distributed)
 
         # Validate
-        model.eval()
+        # Each process validates its share of the rows with the model inside the wrapper; the losses are then
+        # averaged over all processes.
+        raw_model.eval()
         val_loss = 0.0
         with torch.no_grad():
             for src, tgt in valid_loader:
@@ -213,24 +266,26 @@ def train(args: argparse.Namespace) -> None:
                 tgt_in = tgt[:, :-1]
                 tgt_out = tgt[:, 1:]
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=use_amp):
-                    logits = model(src, tgt_in)
+                    logits = raw_model(src, tgt_in)
                 loss = criterion(logits.float().reshape(-1, tokenizer.vocab_size), tgt_out.reshape(-1))
                 val_loss += loss.item()
         # A small trial (prep/train_from_scratch.sh with SMOKE=1) may have no validation rows: no loss then, and no best.pt
-        val_loss = val_loss / len(valid_loader) if len(valid_loader) > 0 else float("nan")
+        val_loss = mean_over_processes(val_loss, len(valid_loader), device, distributed)
 
         elapsed = time.time() - t0
-        print(f"Epoch {epoch}/{args.epochs}  "
-              f"train_loss={train_loss:.4f}  val_loss={val_loss:.4f}  "
-              f"time={elapsed:.0f}s")
+        log(f"Epoch {epoch}/{args.epochs}  "
+            f"train_loss={train_loss:.4f}  val_loss={val_loss:.4f}  "
+            f"time={elapsed:.0f}s")
 
         # Save checkpoint
         is_best = val_loss < best_valid_loss  # False for nan
         if is_best:
             best_valid_loss = val_loss
+        if not main_process:
+            continue
         ckpt = {
             "epoch": epoch,
-            "model_state": model.state_dict(),
+            "model_state": raw_model.state_dict(),
             "optimizer_state": optimizer.state_dict(),
             "scheduler_state": scheduler.state_dict(),
             "val_loss": val_loss,
@@ -246,7 +301,20 @@ def train(args: argparse.Namespace) -> None:
 
         if is_best:
             torch.save(ckpt, os.path.join(ckpt_dir, "best.pt"))
-            print(f"  -> Best model saved (val_loss={val_loss:.4f})")
+            log(f"  -> Best model saved (val_loss={val_loss:.4f})")
+
+    if distributed:
+        dist.barrier()
+        dist.destroy_process_group()
+
+
+def mean_over_processes(loss_sum: float, batches: int, device: torch.device, distributed: bool) -> float:
+    """The mean loss per batch over the batches of every process (nan when there were none)."""
+    if distributed:
+        t = torch.tensor([loss_sum, float(batches)], dtype=torch.float64, device=device)
+        dist.all_reduce(t)
+        loss_sum, batches = t[0].item(), int(t[1].item())
+    return loss_sum / batches if batches > 0 else float("nan")
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +341,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--d-ff", type=int, default=1024)
     p.add_argument("--dropout", type=float, default=0.1)
     p.add_argument("--max-len", type=int, default=128)
+    p.add_argument("--num-workers", type=int, default=2, help="processes that tokenize the rows for the batches")
+    p.add_argument("--seed", type=int, default=None,
+                   help="seed of the random numbers (initial weights, order of the rows); none: not seeded, as before")
     return p.parse_args()
 
 
