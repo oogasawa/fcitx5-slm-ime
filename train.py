@@ -22,6 +22,7 @@ import time
 import math
 import random
 import argparse
+import datetime
 
 import torch
 import torch.distributed as dist
@@ -113,7 +114,10 @@ def train(args: argparse.Namespace) -> None:
         if args.batch_size % world_size != 0:
             raise SystemExit(f"--batch-size {args.batch_size} is not a multiple of the {world_size} GPUs")
         torch.cuda.set_device(local_rank)
-        dist.init_process_group(backend="nccl")
+        # The other processes wait at a barrier while the first builds the tokenizer, which takes several minutes
+        # on tens of millions of rows: the default limit of ten minutes is too short
+        dist.init_process_group(backend="nccl", timeout=datetime.timedelta(hours=2),
+                                device_id=torch.device("cuda", local_rank))
         device = torch.device("cuda", local_rank)
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
