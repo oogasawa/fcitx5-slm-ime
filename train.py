@@ -214,6 +214,10 @@ def train(args: argparse.Namespace) -> None:
     if distributed:
         model = DistributedDataParallel(model, device_ids=[local_rank])
 
+    # --diag-log: one line per step (epoch, step, loss of the first process's rows, gradient norm before clipping,
+    # learning rate), written by the first process, to find where a run goes wrong
+    diag = open(args.diag_log, "a", encoding="utf-8") if args.diag_log and main_process else None
+
     for epoch in range(start_epoch, args.epochs + 1):
         # Train
         model.train()
@@ -235,17 +239,24 @@ def train(args: argparse.Namespace) -> None:
 
             optimizer.zero_grad()
             loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            grad_norm = nn.utils.clip_grad_norm_(model.parameters(), 1.0)  # the norm before clipping
             optimizer.step()
             scheduler.step()
 
             total_loss += loss.item()
+            if diag is not None:
+                diag.write(f"{epoch}\t{step}\t{loss.item():.6f}\t{grad_norm.item():.6f}\t"
+                           f"{scheduler.get_last_lr()[0]:.6e}\n")
+                if step % 50 == 0:
+                    diag.flush()
             if args.max_steps and step >= args.max_steps:
                 torch.cuda.synchronize()
                 took = time.time() - t0
                 log(f"BENCH amp={args.amp} batch={args.batch_size} gpus={world_size} steps={step} "
                     f"{1000 * took / step:.1f} ms/step loss={total_loss / step:.4f} "
                     f"peak_memory={torch.cuda.max_memory_allocated() / 2**30:.1f}GiB")
+                if diag is not None:
+                    diag.close()
                 if distributed:
                     dist.destroy_process_group()
                 sys.exit(0)
@@ -346,6 +357,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dropout", type=float, default=0.1)
     p.add_argument("--max-len", type=int, default=128)
     p.add_argument("--num-workers", type=int, default=2, help="processes that tokenize the rows for the batches")
+    p.add_argument("--diag-log", type=str, default=None,
+                   help="file to which every step's loss, gradient norm and learning rate are added")
     p.add_argument("--seed", type=int, default=None,
                    help="seed of the random numbers (initial weights, order of the rows); none: not seeded, as before")
     return p.parse_args()
