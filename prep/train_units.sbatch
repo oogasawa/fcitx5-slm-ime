@@ -16,6 +16,7 @@
 # 22068 = unit 1, 44136 = units 1 to 2, 66204 = units 1 to 3, 90000 = units 1 to 4, 100082 = units 1 to 5).
 # PREP_ONLY=1 (with bash, not sbatch) runs the steps 1 and 2 only, to test them.
 # Usage (from at022vm02):  sbatch --export=ALL,N=44136,RUN=u12 ~/slm-ime-prep/train_units.sbatch
+# More arguments of train.py in TRAIN_EXTRA, e.g. TRAIN_EXTRA="--amp tf32 --diag-log diag.tsv" (bf16 diverged in units 1-3).
 # Several GPUs (train.py with DistributedDataParallel):  sbatch --gres=gpu:4 --export=ALL,N=90000,RUN=u1234 ...
 # train.py resumes from checkpoints/<RUN>/last.pt, so a job that ran out of time can be submitted again; the steps 1
 # and 2 are then skipped when their results are there (data_hints/done).
@@ -81,5 +82,6 @@ else
 fi
 log "$NGPU GPU(s): ${LAUNCH[*]}"
 "${LAUNCH[@]}" train.py --data-dir "$OUT/data_hints" --run-name "$RUN" --epochs 8 --batch-size 1024 --lr 0.001 \
-    --num-workers 24 --d-model 512 --nhead 8 --enc-layers 6 --dec-layers 6 --d-ff 2048 --dropout 0.1 --max-len 192
+    --num-workers 24 --d-model 512 --nhead 8 --enc-layers 6 --dec-layers 6 --d-ff 2048 --dropout 0.1 --max-len 192 \
+    ${TRAIN_EXTRA:-}
 log "done"
