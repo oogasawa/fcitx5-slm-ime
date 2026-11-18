@@ -138,6 +138,11 @@ def train(args: argparse.Namespace) -> None:
         os.makedirs(ckpt_dir, exist_ok=True)
     log(f"Device: {device}" + (f" x {world_size} processes, {rank_batch} rows each per step" if distributed else ""))
     use_amp = args.amp == "bf16" and device.type == "cuda"
+    # tf32: no autocast; the float32 matrix products run on the TF32 tensor cores (10 bits of mantissa instead of
+    # bf16's 7), which is faster than full float32 and steadier than bf16
+    if args.amp == "tf32":
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
     # The cuDNN attention kernel, on by default in PyTorch 2.5.0, makes a bf16 step about 12 times slower than an
     # fp32 step on the RTX 4080 (1804 ms against 144 ms); without it a bf16 step takes 72 ms.
     torch.backends.cuda.enable_cudnn_sdp(False)
@@ -182,6 +187,8 @@ def train(args: argparse.Namespace) -> None:
         pad_id=PAD_ID,
     ).to(device)
     log(f"Model parameters: {model.num_parameters():,}")
+    if args.fp32_attention:
+        attention_in_fp32(model)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
     scheduler = torch.optim.lr_scheduler.OneCycleLR(
@@ -323,6 +330,20 @@ def train(args: argparse.Namespace) -> None:
         dist.destroy_process_group()
 
 
+def attention_in_fp32(model: nn.Module) -> None:
+    """Runs every attention block in float32 inside the bf16 autocast: the units 1-3 run diverged in bf16 around
+    step 1000 of its fifth epoch and not in float32. The weights and their names do not change."""
+    def wrap(forward):
+        def run(*args, **kwargs):
+            up = lambda x: x.float() if torch.is_tensor(x) and x.is_floating_point() else x
+            with torch.autocast(device_type="cuda", enabled=False):
+                return forward(*[up(a) for a in args], **{k: up(v) for k, v in kwargs.items()})
+        return run
+    for m in model.modules():
+        if isinstance(m, nn.MultiheadAttention):
+            m.forward = wrap(m.forward)
+
+
 def mean_over_processes(loss_sum: float, batches: int, device: torch.device, distributed: bool) -> float:
     """The mean loss per batch over the batches of every process (nan when there were none)."""
     if distributed:
@@ -344,7 +365,7 @@ def parse_args() -> argparse.Namespace:
                    help="Checkpoint subdirectory name (e.g. m256, m512, m768)")
     p.add_argument("--epochs", type=int, default=20)
     p.add_argument("--batch-size", type=int, default=512)
-    p.add_argument("--amp", choices=["none", "bf16"], default="bf16",
+    p.add_argument("--amp", choices=["none", "bf16", "tf32"], default="bf16",
                    help="bf16: the forward pass runs in bfloat16 autocast; the loss, the weights and the optimizer stay float32")
     p.add_argument("--max-steps", type=int, default=0,
                    help="stop after this many steps of the first epoch and print the time per step (0: train normally)")
@@ -357,6 +378,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dropout", type=float, default=0.1)
     p.add_argument("--max-len", type=int, default=128)
     p.add_argument("--num-workers", type=int, default=2, help="processes that tokenize the rows for the batches")
+    p.add_argument("--fp32-attention", action="store_true",
+                   help="with --amp bf16: compute the attention blocks in float32")
     p.add_argument("--diag-log", type=str, default=None,
                    help="file to which every step's loss, gradient norm and learning rate are added")
     p.add_argument("--seed", type=int, default=None,
