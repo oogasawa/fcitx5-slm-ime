@@ -166,6 +166,8 @@ def main():
     ap.add_argument("--max-files", type=int, default=0)
     ap.add_argument("--first-chunk", type=int, default=0, help="the number of the first chunk file (fw_NNNNNNN)")
     ap.add_argument("--exclude", help="the directory of an earlier sample, whose documents and sentences are skipped")
+    ap.add_argument("--dump-docs", help="also write the whole text of every document taken, one line per paragraph as "
+                                        "'document_id TAB text', for a topic filter (corpus-workbench topic-filter)")
     args = ap.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 
@@ -188,6 +190,7 @@ def main():
                         if len(columns) > 1 and columns[1] and columns[1] != "kanji":
                             seen.add(hashlib.md5(columns[1].encode("utf-8")).digest()[:8])
         print("excluded: %d documents, %d sentences of %s" % (len(excluded_docs), len(seen), args.exclude), flush=True)
+    dump = open(args.dump_docs, "w", encoding="utf-8") if args.dump_docs else None
     reasons, docs_seen, docs_used, dup_runs = {}, 0, 0, 0
     started = time.time()
     for fi, path in enumerate(files):
@@ -216,6 +219,11 @@ def main():
                         seen.update(hashes)
                         docs_used += 1
                         writer.write_run(run, ids[i], urls[i].replace("\t", " "), dumps[i])
+                        if dump:
+                            for para in texts[i].split("\n"):
+                                para = para.replace("\t", " ").strip()
+                                if para:
+                                    dump.write("%s\t%s\n" % (ids[i], para))
         except Exception as e:  # a file that cannot be read is skipped; the next file goes on
             print("skip %s: %s" % (path.split("/")[-1], e), file=sys.stderr, flush=True)
         print("file %d/%d %s: sentences=%d runs=%d chunks=%d elapsed=%.0fs" % (
@@ -224,6 +232,8 @@ def main():
         if writer.total_sentences >= args.target_sentences:
             break
     writer.close()
+    if dump:
+        dump.close()
     print("documents seen=%d, runs taken=%d, runs dropped as repeats=%d" % (docs_seen, docs_used, dup_runs))
     print("sentences=%d chunks=%d" % (writer.total_sentences, writer.index - writer.first))
     print("sentences dropped, by reason:", dict(sorted(reasons.items(), key=lambda kv: -kv[1])))
