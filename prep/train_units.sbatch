@@ -18,6 +18,7 @@
 # Usage (from at022vm02):  sbatch --export=ALL,N=44136,RUN=u12 ~/slm-ime-prep/train_units.sbatch
 # The table of the hints in HINTS_TABLE (dict/hard_words2b.tsv when not set) and more arguments of add_hints.py in
 # HINTS_EXTRA, e.g. HINTS_TABLE=dict/hard_words2b_jmed.tsv HINTS_EXTRA=--fields.
+# CHECKER_DIR is the tools directory of Anthy-dicts (bunsetsu_check.py, reading_check.py); the paths prep/ are relative to the repository.
 # More arguments of train.py in TRAIN_EXTRA, e.g. TRAIN_EXTRA="--amp tf32 --diag-log diag.tsv" (bf16 diverged in units 1-3).
 # Several GPUs (train.py with DistributedDataParallel):  sbatch --gres=gpu:4 --export=ALL,N=90000,RUN=u1234 ...
 # train.py resumes from checkpoints/<RUN>/last.pt, so a job that ran out of time can be submitted again; the steps 1
@@ -47,8 +48,8 @@ if [ ! -e "$OUT/data_hints/done" ]; then
 
   if [ "$new" -gt 0 ]; then
     log "cleaning the readings of $new chunks"
-    nice -n 5 "$PY" code/tools/clean_readings.py "$OUT/todo" "$OUT/clean_new" --kanjidic dict/kanjidic2.xml.gz \
-        --jmdict dict/jmdict_pairs.tsv --checker code/tools --workers 32 | tail -n 3
+    nice -n 5 "$PY" prep/clean_readings.py "$OUT/todo" "$OUT/clean_new" --kanjidic dict/kanjidic2.xml.gz \
+        --jmdict dict/jmdict_pairs.tsv --checker "${CHECKER_DIR:-$HOME/works/Anthy-dicts/tools}" --workers 32 | tail -n 3
     find "$OUT/clean_new" -name '*_pairs.tsv' -print0 | xargs -0 mv -t "$P/clean/"   # not a glob: 40000 names are too long for one command
     mv "$OUT/clean_new/changes.tsv" "$P/clean/changes-$RUN.tsv" 2>/dev/null || true
   fi
@@ -58,11 +59,11 @@ if [ ! -e "$OUT/data_hints/done" ]; then
     ln -s "$P/clean/${b}_pairs.tsv" "$OUT/pairs/${b}_pairs.tsv"
   done < <(head -n "$N" "$W/order_pod.txt")
   log "building the rows from $(ls "$OUT/pairs" | wc -l) chunks"
-  nice -n 5 "$PY" code/prep/build_dataset_g.py "$OUT/pairs" "$OUT/data" --context-chars 100 --empty-percent 20 \
+  nice -n 5 "$PY" prep/build_dataset_g.py "$OUT/pairs" "$OUT/data" --context-chars 100 --empty-percent 20 \
       --partial-end-percent 20 --partial-start-percent 20 --hiragana-source
   cp dict/stand-in-tokenizer.json "$OUT/data/tokenizer.json"   # add_hints.py copies the tokenizer of its input; train.py builds a new one
   log "hints"
-  nice -n 5 "$PY" code/prep/add_hints.py "${HINTS_TABLE:-dict/hard_words2b.tsv}" "$OUT/data" "$OUT/data_hints" ${HINTS_EXTRA:-} \
+  nice -n 5 "$PY" prep/add_hints.py "${HINTS_TABLE:-dict/hard_words2b.tsv}" "$OUT/data" "$OUT/data_hints" ${HINTS_EXTRA:-} \
       --history-table dict/common_words3.tsv --history-percent 60 --workers 24
   rm -f "$OUT/data/tokenizer.json" "$OUT/data_hints/tokenizer.json"
   wc -l "$OUT"/data_hints/*.tsv
