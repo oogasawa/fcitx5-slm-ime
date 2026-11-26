@@ -111,6 +111,31 @@ def partial_end_of(reading: str, kanji: str, chunk_name: str, index: int):
     return reading[:-c], kanji[:-c]
 
 
+def partial_start_of(reading: str, kanji: str, chunk_name: str, index: int):
+    """
+    The mirror of partial_end_of: cut the bunsetsu before the converted ones inside its kana tail, so that the
+    reading to convert starts in the middle of a bunsetsu, as it does when the user has committed the first part of
+    it (a word or a Latin word) and types the particle on: LeanはC++ | でかかれているの.
+
+    Returns (reading kept before the cursor, kanji kept before the cursor, the kana tail that is now to be
+    converted), or None when the cut cannot be decided. The tail is the same kana in the reading and in the kanji
+    text, so it is its own answer.
+    """
+    common = 0
+    limit = min(len(reading), len(kanji))
+    while common < limit and reading[-1 - common] == kanji[-1 - common]:
+        common += 1
+    tail = reading[len(reading) - common:] if common else ""
+    while tail and not is_hiragana(tail):
+        tail = tail[1:]
+    longest = min(len(tail), len(reading) - 1, len(kanji) - 1)
+    if longest < 1:
+        return None
+    rng = random.Random(zlib.crc32(f"partialstart:{chunk_name}:{index}".encode("utf-8")))
+    c = rng.randint(1, longest)
+    return reading[:-c], kanji[:-c], reading[-c:]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("pairs_dir")
@@ -125,6 +150,11 @@ def main() -> None:
     parser.add_argument("--partial-end-percent", type=int, default=0,
                         help="share of the training rows that get one more row whose reading stops inside the kana "
                              "tail of its last bunsetsu (with --context-chars); valid and test are left as they are")
+    parser.add_argument("--partial-start-percent", type=int, default=0,
+                        help="share of the training rows that get one more row whose reading starts inside the kana "
+                             "tail of the bunsetsu before it (with --context-chars): the part of that bunsetsu before "
+                             "the tail is the text before the cursor, as when the user has committed it already; "
+                             "valid and test are left as they are")
     parser.add_argument("--page-is-document", nargs="*", default=["fw_"],
                         help="prefixes of the chunk names whose every page is a different document; the text before "
                              "the cursor starts afresh at each of their pages (with --context-chars)")
@@ -138,6 +168,7 @@ def main() -> None:
     with_context = 0
     cut_in_sentence = 0
     partial_rows = 0
+    partial_start_rows = 0
     skipped_rows = 0
     outputs = {name: open(os.path.join(args.out_dir, name + ".tsv"), "w", encoding="utf-8") for name in chunks}
     try:
@@ -177,9 +208,22 @@ def main() -> None:
                 target = "|".join(kanjis[start:end])
                 with_context += 1 if context else 0
                 cut_in_sentence += 1 if start > 0 else 0
+                start_twin = None
+                if split == "train" and args.partial_start_percent > 0 and len(readings) == len(kanjis) and start > 0 \
+                        and zlib.crc32(f"twinstart:{name}:{index}".encode("utf-8")) % 100 < args.partial_start_percent:
+                    cut = partial_start_of(readings[start - 1], kanjis[start - 1], name, index)
+                    if cut is not None:
+                        twin_context = "" if keeps_context_empty(name, index, args.empty_percent) \
+                            else (before + "".join(kanjis[:start - 1]) + cut[1])[-args.context_chars:]
+                        start_twin = (twin_context + SEP_CHAR + cut[2] + "".join(readings[start:end]),
+                                      "|".join([cut[2]] + kanjis[start:end]))
                 before = (before + kanji.replace("|", ""))[-4 * args.context_chars:]
                 outputs[split].write(source + "\t" + target + "\n")
                 rows[split] += 1
+                if start_twin is not None:
+                    outputs[split].write(start_twin[0] + "\t" + start_twin[1] + "\n")
+                    rows[split] += 1
+                    partial_start_rows += 1
                 if split == "train" and args.partial_end_percent > 0 and len(readings) == len(kanjis) \
                         and zlib.crc32(f"twin:{name}:{index}".encode("utf-8")) % 100 < args.partial_end_percent:
                     partial = partial_end_of(readings[end - 1], kanjis[end - 1], name, index)
@@ -201,6 +245,7 @@ def main() -> None:
         print(f"rows with a non-empty text before the cursor: {with_context} of {total}")
         print(f"rows that start inside the sentence: {cut_in_sentence} of {total}")
         print(f"rows that stop inside the kana tail of the last bunsetsu: {partial_rows}")
+        print(f"rows that start inside the kana tail of the bunsetsu before: {partial_start_rows}")
 
 
 if __name__ == "__main__":

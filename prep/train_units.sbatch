@@ -16,6 +16,8 @@
 # 22068 = unit 1, 44136 = units 1 to 2, 66204 = units 1 to 3, 90000 = units 1 to 4, 100082 = units 1 to 5).
 # PREP_ONLY=1 (with bash, not sbatch) runs the steps 1 and 2 only, to test them.
 # Usage (from at022vm02):  sbatch --export=ALL,N=44136,RUN=u12 ~/slm-ime-prep/train_units.sbatch
+# The table of the hints in HINTS_TABLE (dict/hard_words2b.tsv when not set) and more arguments of add_hints.py in
+# HINTS_EXTRA, e.g. HINTS_TABLE=dict/hard_words2b_jmed.tsv HINTS_EXTRA=--fields.
 # More arguments of train.py in TRAIN_EXTRA, e.g. TRAIN_EXTRA="--amp tf32 --diag-log diag.tsv" (bf16 diverged in units 1-3).
 # Several GPUs (train.py with DistributedDataParallel):  sbatch --gres=gpu:4 --export=ALL,N=90000,RUN=u1234 ...
 # train.py resumes from checkpoints/<RUN>/last.pt, so a job that ran out of time can be submitted again; the steps 1
@@ -60,7 +62,7 @@ if [ ! -e "$OUT/data_hints/done" ]; then
       --partial-end-percent 20 --partial-start-percent 20 --hiragana-source
   cp dict/stand-in-tokenizer.json "$OUT/data/tokenizer.json"   # add_hints.py copies the tokenizer of its input; train.py builds a new one
   log "hints"
-  nice -n 5 "$PY" code/prep/add_hints.py dict/hard_words2b.tsv "$OUT/data" "$OUT/data_hints" \
+  nice -n 5 "$PY" code/prep/add_hints.py "${HINTS_TABLE:-dict/hard_words2b.tsv}" "$OUT/data" "$OUT/data_hints" ${HINTS_EXTRA:-} \
       --history-table dict/common_words3.tsv --history-percent 60 --workers 24
   rm -f "$OUT/data/tokenizer.json" "$OUT/data_hints/tokenizer.json"
   wc -l "$OUT"/data_hints/*.tsv
