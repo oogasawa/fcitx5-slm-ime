@@ -178,7 +178,11 @@ def align(reading: str, texts: list[str]) -> list[str] | None:
         failed.add((t, r))
         return False
 
-    if not match(0, 0):
+    try:
+        found = match(0, 0)
+    except RecursionError:
+        return None   # a bunsetsu of more than about a thousand characters: no hint is made of it, as where the reading cannot be cut
+    if not found:
         return None
     at[len(tokens)] = len(reading)
     starts = [0] + ends
