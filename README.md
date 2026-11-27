@@ -355,7 +355,3 @@ Main dependencies of the engine: Eigen (MPL-2.0); nlohmann/json (MIT); Anthy (`l
   kanji-kana text that trained the model.
 - [Trained model](https://github.com/oogasawa/fcitx5-slm-ime/releases): the model is published in the releases, as the
   package `slm-ime-model`.
-- [KANJIDIC2](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project) and [JMdict](https://www.edrdg.org/jmdict/j_jmdict.html):
-  the dictionaries of the Electronic Dictionary Research and Development Group, used to check the readings.
-- [SudachiDict](https://github.com/WorksApplications/SudachiDict): the dictionary of the Sudachi morphological
-  analyzer, used to check the phrasal unit (bunsetsu) boundaries.
