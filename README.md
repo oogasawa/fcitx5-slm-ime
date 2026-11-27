@@ -346,3 +346,16 @@ KANJIDIC2 and JMdict (CC BY-SA 4.0, the Electronic Dictionary Research and Devel
 
 Main dependencies of the engine: Eigen (MPL-2.0); nlohmann/json (MIT); Anthy (`libanthy`), LGPL-3 or later
 (part of its dictionary data is GPL-2); fcitx5 (LGPL-2.1 or later).
+
+## Related repositories and data
+
+- [`Anthy-dicts`](https://github.com/oogasawa/Anthy-dicts): the dictionary data of readings and kanji words, from
+  which the words of the training data are taken.
+- [Training data](https://huggingface.co/datasets/oogasawa/fcitx5-slm-ime-training-data): the pairs of a reading and
+  kanji-kana text that trained the model.
+- [Trained model](https://github.com/oogasawa/fcitx5-slm-ime/releases): the model is published in the releases, as the
+  package `slm-ime-model`.
+- [KANJIDIC2](https://www.edrdg.org/wiki/index.php/KANJIDIC_Project) and [JMdict](https://www.edrdg.org/jmdict/j_jmdict.html):
+  the dictionaries of the Electronic Dictionary Research and Development Group, used to check the readings.
+- [SudachiDict](https://github.com/WorksApplications/SudachiDict): the dictionary of the Sudachi morphological
+  analyzer, used to check the phrasal unit (bunsetsu) boundaries.
